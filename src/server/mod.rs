@@ -121,7 +121,7 @@ fn handle_command(
             }
             let key = parts[1].parse::<i32>()?;
             let value = parse_value(parts[2])?;
-            db.update(key, value)?;
+            db.update(key, &value)?;
             Ok("OK\n".to_string())
         }
         "ALL" => {

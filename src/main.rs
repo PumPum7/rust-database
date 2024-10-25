@@ -4,8 +4,22 @@ use std::error::Error;
 mod server;
 use server::Server;
 
+fn print_header() {
+    println!(
+        r#"
+  ____        _        _
+ |  _ \  __ _| |_ __ _| |__   __ _ ___  ___
+ | | | |/ _` | __/ _` | '_ \ / _` / __|/ _ \
+ | |_| | (_| | || (_| | |_) | (_| \__ \  __/
+ |____/ \__,_|\__\__,_|_.__/ \__,_|___/\___|
+
+        "#
+    );
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
-    println!("SQLite-like Database Engine Starting...");
+    print_header();
+    println!("Starting database server");
 
     // Create or open database
     let db = match Database::new("test.db") {
