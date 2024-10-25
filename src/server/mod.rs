@@ -51,10 +51,7 @@ fn handle_client(mut stream: TcpStream, db: Arc<Mutex<Database>>) -> std::io::Re
             break;
         }
 
-        let response = match handle_command(&line, &db) {
-            Ok(resp) => resp,
-            Err(e) => format!("ERROR: {}\n", e),
-        };
+        let response = handle_command(&line, &db).unwrap_or_else(|e| format!("ERROR: {}\n", e));
 
         stream.write_all(response.as_bytes())?;
         stream.flush()?;
@@ -65,7 +62,7 @@ fn handle_client(mut stream: TcpStream, db: Arc<Mutex<Database>>) -> std::io::Re
 fn parse_value(s: &str) -> Result<Value, Box<dyn std::error::Error>> {
     // Try parsing as different types
     if s == "null" {
-        return Ok(Value::Null);
+        Ok(Value::Null)
     } else if s == "true" {
         return Ok(Value::Boolean(true));
     } else if s == "false" {
@@ -107,7 +104,7 @@ fn handle_command(
             }
             let key = parts[1].parse::<i32>()?;
             let value = parse_value(parts[2])?;
-            db.insert(key, value)?;
+            db.insert(key, &value)?;
             Ok("OK\n".to_string())
         }
         "DEL" => {
@@ -126,6 +123,13 @@ fn handle_command(
             let value = parse_value(parts[2])?;
             db.update(key, value)?;
             Ok("OK\n".to_string())
+        }
+        "ALL" => {
+            let mut response = String::new();
+            for (key, value) in db.all()? {
+                response.push_str(&format!("{}: {:?}\n", key, value));
+            }
+            Ok(response)
         }
         "EXIT" => {
             std::process::exit(0);

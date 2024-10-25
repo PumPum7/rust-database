@@ -72,7 +72,22 @@ impl Validator for DbHelper {
 
 impl rustyline::Helper for DbHelper {}
 
+fn print_header() {
+    println!(
+        r#"
+  ____        _        _
+ |  _ \  __ _| |_ __ _| |__   __ _ ___  ___
+ | | | |/ _` | __/ _` | '_ \ / _` / __|/ _ \
+ | |_| | (_| | || (_| | |_) | (_| \__ \  __/
+ |____/ \__,_|\__\__,_|_.__/ \__,_|___/\___|
+
+        "#
+    );
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    print_header();
+
     let mut stream = TcpStream::connect("127.0.0.1:5432")?;
 
     let helper = DbHelper {
@@ -81,6 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "SET".to_string(),
             "UPDATE".to_string(),
             "DEL".to_string(),
+            "ALL".to_string(),
             "exit".to_string(),
             "help".to_string(),
         ],
@@ -120,6 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("  SET <key> <value>   - Set key-value pair");
                 println!("  UPDATE <key> <value> - Update key-value pair");
                 println!("  DEL <key>           - Delete key-value pair");
+                println!("  ALL                 - Get all key-value pairs");
                 println!("  exit                - Exit the client");
                 println!("  help                - Show this help message");
                 continue;

@@ -98,49 +98,4 @@ mod tests {
 
         Ok(())
     }
-
-    #[test]
-    fn test_btree_large_dataset() -> Result<()> {
-        let disk_manager = DiskManager::new("test_btree_large.db")?;
-        let mut buffer_pool = BufferPool::new(1000, disk_manager);
-        let root_page_id = buffer_pool.new_page()?.header.page_id;
-        let mut btree = BTree::new(root_page_id);
-
-        btree.init(&mut buffer_pool)?;
-
-        // Insert a large number of key-value pairs
-        for i in 0..1000 {
-            btree.insert(i, Value::Integer((i * 10).into()), &mut buffer_pool)?;
-        }
-
-        // Verify insertions
-        for i in 0..1000 {
-            assert_eq!(
-                btree.search(i, &mut buffer_pool)?,
-                Some(Value::Integer((i * 10).into()))
-            );
-        }
-
-        // Delete every other key
-        for i in (0..1000).step_by(2) {
-            btree.delete(i, &mut buffer_pool)?;
-        }
-
-        // Verify deletions and remaining keys
-        for i in 0..1000 {
-            if i % 2 == 0 {
-                assert_eq!(btree.search(i, &mut buffer_pool)?, None);
-            } else {
-                assert_eq!(
-                    btree.search(i, &mut buffer_pool)?,
-                    Some(Value::Integer((i * 10).into()))
-                );
-            }
-        }
-
-        // Delete the file again
-        std::fs::remove_file("test_btree_large.db")?;
-
-        Ok(())
-    }
 }

@@ -349,14 +349,14 @@ impl BTree {
 
         if node.is_leaf {
             // Case 1: If the key is in this leaf node, remove it
-            if let Some(idx) = node.entries.iter().position(|entry| entry.key == key) {
+            return if let Some(idx) = node.entries.iter().position(|entry| entry.key == key) {
                 node.entries.remove(idx);
                 let mut page = Page::new(page_id);
                 page.data = node.serialize();
                 buffer_pool.write_page(page_id, page)?;
-                return Ok(());
+                Ok(())
             } else {
-                return Ok(());
+                Ok(())
             }
         } else {
             // Find the child which might contain the key
@@ -527,14 +527,35 @@ impl BTree {
         BTreeNode::deserialize(&page.data)
     }
 
-    fn write_node(
+    pub fn update(&mut self, key: i32, value: Value, buffer_pool: &mut BufferPool) -> Result<()> {
+        self.delete(key, buffer_pool)?;
+        self.insert(key, value, buffer_pool)
+    }
+
+    pub fn traverse(
         &self,
         page_id: u32,
-        node: &BTreeNode,
         buffer_pool: &mut BufferPool,
+        result: &mut Vec<(i32, Value)>,
     ) -> Result<()> {
-        let mut page = Page::new(page_id);
-        page.data = node.serialize();
-        buffer_pool.write_page(page_id, page)
+        let node = self.get_node(page_id, buffer_pool)?;
+
+        for entry in &node.entries {
+            result.push((entry.key, entry.value.clone()));
+        }
+
+        if !node.is_leaf {
+            for child_id in &node.children {
+                self.traverse(*child_id, buffer_pool, result)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn all(&self, buffer_pool: &mut BufferPool) -> Result<Vec<(i32, Value)>> {
+        let mut result = Vec::new();
+        self.traverse(self.root_page_id, buffer_pool, &mut result)?;
+        Ok(result)
     }
 }

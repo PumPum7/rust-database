@@ -5,10 +5,12 @@ pub mod page;
 pub mod slotted_page;
 pub mod transaction;
 pub mod value;
+pub mod wal;
 
 mod tests;
 
 pub use value::Value;
+pub use wal::{WriteAheadLog, LogRecord};
 
 pub use transaction::{Transaction, TransactionManager};
 

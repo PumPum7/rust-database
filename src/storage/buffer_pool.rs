@@ -2,11 +2,14 @@ use super::disk_manager::DiskManager;
 use super::error::{DatabaseError, Result};
 use super::page::Page;
 use std::collections::HashMap;
+// use crate::storage::{WriteAheadLog};
 
 pub struct BufferPool {
     pages: HashMap<u32, Page>,
     capacity: usize,
     disk_manager: DiskManager,
+    // current_txn: Option<u64>,
+    // wal: WriteAheadLog
 }
 
 impl BufferPool {
@@ -15,6 +18,8 @@ impl BufferPool {
             pages: HashMap::new(),
             capacity,
             disk_manager,
+            // current_txn: None,
+            // wal: WriteAheadLog::new("db.wal").unwrap(),
         }
     }
 
@@ -27,7 +32,9 @@ impl BufferPool {
             return Err(DatabaseError::BufferPoolFull);
         }
 
-        let page = self.disk_manager.read_page(page_id)?;
+        let page = self.disk_manager.read_page(page_id).map_err(|e| {
+            DatabaseError::InvalidOperation(format!("Failed to read page {}: {}", page_id, e))
+        })?;
         self.pages.insert(page_id, page);
         Ok(self.pages.get_mut(&page_id).unwrap())
     }
@@ -45,7 +52,9 @@ impl BufferPool {
 
     pub fn write_page(&mut self, page_id: u32, page: Page) -> Result<()> {
         self.pages.insert(page_id, page.clone());
-        self.disk_manager.write_page(&page)?;
+        self.disk_manager.write_page(&page).map_err(|e| {
+            DatabaseError::InvalidOperation(format!("Failed to write page {}: {}", page_id, e))
+        })?;
         Ok(())
     }
 
@@ -58,7 +67,12 @@ impl BufferPool {
     pub fn flush(&mut self) -> Result<()> {
         for page in self.pages.values() {
             if page.is_dirty() {
-                self.disk_manager.write_page(page)?;
+                self.disk_manager.write_page(page).map_err(|e| {
+                    DatabaseError::InvalidOperation(format!(
+                        "Failed to write page {}: {}",
+                        page.header.page_id, e
+                    ))
+                })?;
             }
         }
         Ok(())

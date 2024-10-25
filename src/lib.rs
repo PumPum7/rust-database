@@ -1,20 +1,25 @@
 pub mod index;
 pub mod storage;
+mod tests;
 
 use index::BTree;
 use std::path::Path;
 pub use storage::{BufferPool, DiskManager, Transaction, TransactionManager, Value};
+use crate::storage::{LogRecord, WriteAheadLog};
 
 pub struct Database {
     buffer_pool: BufferPool,
     transaction_manager: TransactionManager,
     index: BTree,
+    wal: WriteAheadLog,
 }
 
 impl Database {
     pub fn new(path: impl AsRef<Path>) -> Result<Self, Box<dyn std::error::Error>> {
-        let disk_manager = DiskManager::new(path.as_ref().to_str().unwrap())?;
+        let path = path.as_ref();
+        let disk_manager = DiskManager::new(path.to_str().unwrap())?;
         let mut buffer_pool = BufferPool::new(1000, disk_manager);
+        let wal = WriteAheadLog::new(path.with_extension("wal"))?;
 
         // Create and initialize root page for index
         let root_page_id = buffer_pool.new_page()?.header.page_id;
@@ -27,6 +32,7 @@ impl Database {
             buffer_pool,
             transaction_manager: TransactionManager::new(),
             index: btree,
+            wal,
         })
     }
 
@@ -34,10 +40,18 @@ impl Database {
         Ok(self.transaction_manager.begin_transaction()?)
     }
 
-    pub fn insert(&mut self, key: i32, value: Value) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn insert(&mut self, key: i32, value: &Value) -> Result<(), Box<dyn std::error::Error>> {
         // Add error handling and logging for debugging
-        match self.index.insert(key, value, &mut self.buffer_pool) {
-            Ok(()) => Ok(()),
+        match self.index.insert(key, value.clone(), &mut self.buffer_pool) {
+            Ok(()) => {
+                self.wal.log(LogRecord::Write {
+                    txn_id: 0,
+                    page_id: 0,
+                    offset: 0,
+                    data: value.serialize(),
+                })?;
+                Ok(())
+            },
             Err(e) => {
                 eprintln!("Error inserting key {}: {}", key, e);
                 Err(Box::new(e))
@@ -57,7 +71,15 @@ impl Database {
 
     pub fn delete(&mut self, key: i32) -> Result<(), Box<dyn std::error::Error>> {
         match self.index.delete(key, &mut self.buffer_pool) {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                self.wal.log(LogRecord::Write {
+                    txn_id: 0,
+                    page_id: 0,
+                    offset: 0,
+                    data: vec![],
+                })?;
+                Ok(())
+            },
             Err(e) => {
                 eprintln!("Error deleting key {}: {}", key, e);
                 Err(Box::new(e))
@@ -65,57 +87,36 @@ impl Database {
         }
     }
 
-    pub fn update(&mut self, key: i32, value: Value) -> Result<(), Box<dyn std::error::Error>> {
-        self.delete(key)?;
-        self.insert(key, value)?;
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    #[test]
-    fn test_database_operations() -> Result<(), Box<dyn std::error::Error>> {
-        let test_db_path = "test_db_ops.db";
-
-        // Clean up any existing test database
-        let _ = fs::remove_file(test_db_path);
-
-        // Create new database
-        let mut db = Database::new(test_db_path)?;
-
-        // Test insert
-        db.insert(1, Value::Integer(100))?;
-
-        // Test get
-        assert_eq!(db.get(1)?, Some(Value::Integer(100)));
-
-        // Test delete
-        db.delete(1)?;
-        assert_eq!(db.get(1)?, None);
-
-        // Clean up
-        fs::remove_file(test_db_path)?;
-
-        Ok(())
+    pub fn update(&mut self, key: i32, value: &Value) -> Result<(), Box<dyn std::error::Error>> {
+        match self.index.update(key, value.clone(), &mut self.buffer_pool) {
+            Ok(()) => {
+                self.wal.log(LogRecord::Write {
+                    txn_id: 0,
+                    page_id: 0,
+                    offset: 0,
+                    data: value.serialize(),
+                })?;
+                Ok(())
+            },
+            Err(e) => {
+                eprintln!("Error updating key {}: {}", key, e);
+                Err(Box::new(e))
+            }
+        }
     }
 
-    #[test]
-    fn test_database_initialization() -> Result<(), Box<dyn std::error::Error>> {
-        let test_db_path = "test_db_init.db";
-        let _ = fs::remove_file(test_db_path);
+    pub fn all(&mut self) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+        match self.index.all(&mut self.buffer_pool) {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                eprintln!("Error fetching all keys: {}", e);
+                Err(Box::new(e))
+            }
+        }
+    }
 
-        let db = Database::new(test_db_path)?;
-
-        // Verify that the database was created
-        assert!(Path::new(test_db_path).exists());
-
-        // Clean up
-        fs::remove_file(test_db_path)?;
-
+    pub fn flush(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.buffer_pool.flush()?;
         Ok(())
     }
 }
