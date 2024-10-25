@@ -1,11 +1,11 @@
 use rustyline::completion::Completer;
+use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
+use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::hint::Hinter;
+use rustyline::validate::MatchingBracketValidator;
 use rustyline::validate::Validator;
 use rustyline::{CompletionType, Config, Editor};
-use rustyline::error::ReadlineError;
-use rustyline::validate::MatchingBracketValidator;
-use rustyline::highlight::MatchingBracketHighlighter;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 
@@ -26,7 +26,7 @@ impl Completer for DbHelper {
         _ctx: &rustyline::Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
         let line_parts: Vec<&str> = line[..pos].split_whitespace().collect();
-        
+
         if line_parts.is_empty() {
             return Ok((0, self.commands.clone()));
         }
@@ -62,7 +62,10 @@ impl Hinter for DbHelper {
 }
 
 impl Validator for DbHelper {
-    fn validate(&self, ctx: &mut rustyline::validate::ValidationContext) -> rustyline::Result<rustyline::validate::ValidationResult> {
+    fn validate(
+        &self,
+        ctx: &mut rustyline::validate::ValidationContext,
+    ) -> rustyline::Result<rustyline::validate::ValidationResult> {
         self.validator.validate(ctx)
     }
 }
@@ -71,7 +74,7 @@ impl rustyline::Helper for DbHelper {}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = TcpStream::connect("127.0.0.1:5432")?;
-    
+
     let helper = DbHelper {
         commands: vec![
             "GET".to_string(),
@@ -84,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         highlighter: MatchingBracketHighlighter::new(),
         validator: MatchingBracketValidator::new(),
     };
-    
+
     let config = Config::builder()
         .completion_type(CompletionType::List)
         .build();
