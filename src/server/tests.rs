@@ -54,6 +54,9 @@ mod tests {
         // Test deletion
         assert_eq!(send_command(&mut stream, "DEL 1"), "OK\n");
         assert_eq!(send_command(&mut stream, "GET 1"), "NULL\n");
+
+        // Cleanup
+        std::fs::remove_file("test_server.db").unwrap();
     }
 
     #[test]
