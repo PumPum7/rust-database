@@ -3,6 +3,7 @@ name = "database"
 version = "0.1.0"
 edition = "2021"
 default-run = "database"
+autotests = true
 
 [dependencies]
 thiserror = "1.0"
@@ -10,6 +11,7 @@ log = "0.4"
 env_logger = "0.11.5"
 rustyline = "14.0.0"
 rustyline-derive = "0.10.0"
+crc32fast = "1.4.2"
 
 [[bin]]
 name = "client"

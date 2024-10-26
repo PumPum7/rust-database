@@ -2,6 +2,8 @@ use super::error::{DatabaseError, Result};
 use std::fs::{File, OpenOptions};
 use std::io::{Write};
 use std::path::Path;
+use crc32fast::Hasher;
+
 
 pub enum LogRecord {
     Begin(u64),    // Transaction ID
@@ -17,6 +19,7 @@ pub enum LogRecord {
 
 pub struct WriteAheadLog {
     log_file: File,
+    sequence: u64,
 }
 
 impl WriteAheadLog {
@@ -27,16 +30,28 @@ impl WriteAheadLog {
             .open(path)
             .map_err(|e| DatabaseError::IoError(e))?;
 
-        Ok(Self { log_file })
+        Ok(Self { 
+            log_file,
+            sequence: 0,
+        })
     }
 
     pub fn log(&mut self, record: LogRecord) -> Result<()> {
-        // Simple implementation - just serialize and write
-        // TODO: Add checksums and sequence numbers
+        self.sequence += 1;
+        let mut hasher = Hasher::new();
+        
+        // Write sequence number
+        let seq_bytes = self.sequence.to_le_bytes();
+        self.log_file.write_all(&seq_bytes)?;
+        hasher.update(&seq_bytes);
+
+        // Write record
         match record {
             LogRecord::Begin(txn_id) => {
-                self.log_file.write_all(&[1])?; // Type
+                self.log_file.write_all(&[1])?;
                 self.log_file.write_all(&txn_id.to_le_bytes())?;
+                hasher.update(&[1]);
+                hasher.update(&txn_id.to_le_bytes());
             }
             LogRecord::Commit(txn_id) => {
                 self.log_file.write_all(&[2])?;
@@ -60,6 +75,9 @@ impl WriteAheadLog {
                 self.log_file.write_all(&data)?;
             }
         }
+        // Write checksum
+        let checksum = hasher.finalize();
+        self.log_file.write_all(&checksum.to_le_bytes())?;
         self.log_file.flush()?;
         Ok(())
     }
