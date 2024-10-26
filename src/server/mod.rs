@@ -3,6 +3,9 @@ mod tests;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use log::{info, warn};
+use threadpool::ThreadPool;
 
 use crate::Database;
 use database::Value;
@@ -21,20 +24,19 @@ impl Server {
     }
 
     pub fn run(&self) -> std::io::Result<()> {
+        let pool = ThreadPool::new(4);
         let listener = TcpListener::bind(format!("127.0.0.1:{}", self.port))?;
-        println!("Server listening on port {}", self.port);
 
         for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => {
-                    let db = Arc::clone(&self.db);
-                    std::thread::spawn(move || {
-                        if let Err(e) = handle_client(stream, db) {
-                            eprintln!("Error handling client: {}", e);
-                        }
-                    });
-                }
-                Err(e) => eprintln!("Error accepting connection: {}", e),
+            let db = Arc::clone(&self.db);
+            if let Ok(stream) = stream {
+                pool.execute(move || {
+                    if let Err(e) = handle_client(stream, db) {
+                        eprintln!("Error handling client: {}", e);
+                    }
+                });
+            } else {
+                eprintln!("Error accepting client connection");
             }
         }
         Ok(())
@@ -42,6 +44,9 @@ impl Server {
 }
 
 fn handle_client(mut stream: TcpStream, db: Arc<Mutex<Database>>) -> std::io::Result<()> {
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(30)))?;
+
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut line = String::new();
 
@@ -86,6 +91,8 @@ fn handle_command(
     if parts.is_empty() {
         return Ok("OK\n".to_string());
     }
+
+    info!("Received command: {}", cmd);
 
     let mut db = db.lock().unwrap();
     match parts[0].to_uppercase().as_str() {
@@ -135,6 +142,9 @@ fn handle_command(
         "EXIT" => {
             std::process::exit(0);
         }
-        _ => Ok("ERROR: Unknown command\n".to_string()),
+        _ => {
+            warn!("Unknown command: {}", parts[0]);
+            Ok("ERROR: Unknown command\n".to_string())
+        }
     }
 }

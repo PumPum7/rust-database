@@ -1,10 +1,8 @@
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
-use rustyline::highlight::Highlighter;
-use rustyline::highlight::MatchingBracketHighlighter;
+use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
 use rustyline::hint::Hinter;
-use rustyline::validate::MatchingBracketValidator;
-use rustyline::validate::Validator;
+use rustyline::validate::{Validator, MatchingBracketValidator};
 use rustyline::{CompletionType, Config, Editor};
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;

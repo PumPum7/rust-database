@@ -12,6 +12,7 @@ env_logger = "0.11.5"
 rustyline = "14.0.0"
 rustyline-derive = "0.10.0"
 crc32fast = "1.4.2"
+threadpool = "1.8.1"
 
 [[bin]]
 name = "client"
