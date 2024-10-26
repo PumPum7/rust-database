@@ -17,16 +17,25 @@ pub struct Database {
 impl Database {
     pub fn new(path: impl AsRef<Path>) -> Result<Self, Box<dyn std::error::Error>> {
         let path = path.as_ref();
+        let file_exists = path.exists();
         let disk_manager = DiskManager::new(path.to_str().unwrap())?;
         let mut buffer_pool = BufferPool::new(1000, disk_manager);
         let wal = WriteAheadLog::new(path.with_extension("wal"))?;
 
-        // Create and initialize root page for index
-        let root_page_id = buffer_pool.new_page()?.header.page_id;
-        let btree = BTree::new(root_page_id);
+        let root_page_id = if !file_exists {
+            // Create and initialize root page for index if this is a new database
+            let page_id = buffer_pool.new_page()?.header.page_id;
+            let btree = BTree::new(page_id);
+            // Initialize the B-tree with an empty root node
+            btree.init(&mut buffer_pool)?;
+            page_id
+        } else {
+            // For existing database, read the first page which contains the root
+            let page = buffer_pool.get_page(0)?;
+            page.header.page_id
+        };
 
-        // Initialize the B-tree with an empty root node
-        btree.init(&mut buffer_pool)?;
+        let btree = BTree::new(root_page_id);
 
         Ok(Self {
             buffer_pool,

@@ -540,13 +540,20 @@ impl BTree {
     ) -> Result<()> {
         let node = self.get_node(page_id, buffer_pool)?;
 
-        for entry in &node.entries {
-            result.push((entry.key, entry.value.clone()));
-        }
-
-        if !node.is_leaf {
-            for child_id in &node.children {
-                self.traverse(*child_id, buffer_pool, result)?;
+        if node.is_leaf {
+            // For leaf nodes, add all entries
+            result.extend(node.entries.iter().map(|entry| (entry.key, entry.value.clone())));
+        } else {
+            // For internal nodes, traverse in order
+            for i in 0..=node.entries.len() {
+                if i < node.children.len() {
+                    // Traverse child
+                    self.traverse(node.children[i], buffer_pool, result)?;
+                }
+                if i < node.entries.len() {
+                    // Add current entry
+                    result.push((node.entries[i].key, node.entries[i].value.clone()));
+                }
             }
         }
 

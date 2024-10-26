@@ -148,7 +148,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let mut reader = BufReader::new(&stream);
                 let mut response = String::new();
-                reader.read_line(&mut response)?;
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line)?;
+                    if line.trim() == "===END===" {
+                        break;
+                    }
+                    response.push_str(&line);
+                }
                 print!("{}", response);
             }
         }

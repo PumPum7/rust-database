@@ -51,8 +51,9 @@ fn handle_client(mut stream: TcpStream, db: Arc<Mutex<Database>>) -> std::io::Re
             break;
         }
 
-        let response = handle_command(&line, &db).unwrap_or_else(|e| format!("ERROR: {}\n", e));
-
+        let mut response = handle_command(&line, &db).unwrap_or_else(|e| format!("ERROR: {}", e));
+        // Push an end marker to the response
+        response.push_str("\n===END===\n");
         stream.write_all(response.as_bytes())?;
         stream.flush()?;
     }
