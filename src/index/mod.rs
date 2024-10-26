@@ -1,5 +1,8 @@
 mod tests;
 
+use std::sync::Arc;
+use std::sync::RwLock;
+
 use crate::storage::buffer_pool::BufferPool;
 use crate::storage::error::DatabaseError;
 use crate::storage::error::Result;
@@ -149,14 +152,11 @@ impl BTreeNode {
         let children: Vec<u32> = buffer[current_pos..]
             .chunks_exact(4)
             .map(|chunk| {
-                // TODO: handle error
-                u32::from_le_bytes(
-                    chunk
-                        .try_into()
-                        .unwrap_or_else(|_| panic!("Invalid child page ID")),
-                )
+                chunk.try_into().map(u32::from_le_bytes).map_err(|e| {
+                    DatabaseError::InvalidData(format!("Invalid child page ID: {}", e))
+                })
             })
-            .collect();
+            .collect::<Result<_>>()?;
 
         Ok(Self {
             page_id,
@@ -168,24 +168,27 @@ impl BTreeNode {
 }
 
 pub struct BTree {
-    root_page_id: u32,
+    root_page_id: Arc<RwLock<u32>>,
 }
 
 impl BTree {
     pub fn new(root_page_id: u32) -> Self {
-        Self { root_page_id }
+        Self {
+            root_page_id: Arc::new(RwLock::new(root_page_id)),
+        }
     }
 
     pub fn init(&self, buffer_pool: &mut BufferPool) -> Result<()> {
-        let root = BTreeNode::new(self.root_page_id, true);
-        let mut page = Page::new(self.root_page_id);
+        let root_page_id = *self.root_page_id.read().unwrap();
+        let root = BTreeNode::new(root_page_id, true);
+        let mut page = Page::new(root_page_id);
         page.data = root.serialize();
-        buffer_pool.write_page(self.root_page_id, page)?;
+        buffer_pool.write_page(root_page_id, page)?;
         Ok(())
     }
 
     pub fn search(&self, key: i32, buffer_pool: &mut BufferPool) -> Result<Option<Value>> {
-        let mut current_page_id = self.root_page_id;
+        let mut current_page_id = *self.root_page_id.read().unwrap();
 
         loop {
             let page = buffer_pool.get_page(current_page_id)?;
@@ -203,15 +206,16 @@ impl BTree {
     }
 
     pub fn insert(&mut self, key: i32, value: Value, buffer_pool: &mut BufferPool) -> Result<()> {
+        let root_page_id = *self.root_page_id.read().unwrap();
         // Get root node
-        let root_page = buffer_pool.get_page(self.root_page_id)?;
+        let root_page = buffer_pool.get_page(root_page_id)?;
         let root_node = BTreeNode::deserialize(&root_page.data)?;
 
         if root_node.is_full() {
             // Create new root
             let new_root_page = buffer_pool.new_page()?;
             let mut new_root = BTreeNode::new(new_root_page.header.page_id, false);
-            new_root.children.push(self.root_page_id);
+            new_root.children.push(root_page_id);
 
             // Write new empty root
             let mut page = Page::new(new_root.page_id);
@@ -222,12 +226,14 @@ impl BTree {
             self.split_child(new_root.page_id, 0, buffer_pool)?;
 
             // Update root page id
-            self.root_page_id = new_root.page_id;
-
+            let mut root_page_id_write = self.root_page_id.write().unwrap();
+            *root_page_id_write = new_root.page_id;
             // Insert into new root
+            
+            drop(root_page_id_write);
             self.insert_non_full(new_root.page_id, key, value, buffer_pool)?;
         } else {
-            self.insert_non_full(self.root_page_id, key, value, buffer_pool)?;
+            self.insert_non_full(root_page_id, key, value, buffer_pool)?;
         }
         Ok(())
     }
@@ -340,7 +346,8 @@ impl BTree {
     }
 
     pub fn delete(&mut self, key: i32, buffer_pool: &mut BufferPool) -> Result<()> {
-        self.delete_key(self.root_page_id, key, buffer_pool)
+        let root_page_id = *self.root_page_id.read().unwrap();
+        self.delete_key(root_page_id, key, buffer_pool)
     }
 
     fn delete_key(&mut self, page_id: u32, key: i32, buffer_pool: &mut BufferPool) -> Result<()> {
@@ -357,7 +364,7 @@ impl BTree {
                 Ok(())
             } else {
                 Ok(())
-            }
+            };
         } else {
             // Find the child which might contain the key
             let idx = match node.entries.binary_search_by_key(&key, |entry| entry.key) {
@@ -542,7 +549,11 @@ impl BTree {
 
         if node.is_leaf {
             // For leaf nodes, add all entries
-            result.extend(node.entries.iter().map(|entry| (entry.key, entry.value.clone())));
+            result.extend(
+                node.entries
+                    .iter()
+                    .map(|entry| (entry.key, entry.value.clone())),
+            );
         } else {
             // For internal nodes, traverse in order
             for i in 0..=node.entries.len() {
@@ -562,7 +573,8 @@ impl BTree {
 
     pub fn all(&self, buffer_pool: &mut BufferPool) -> Result<Vec<(i32, Value)>> {
         let mut result = Vec::new();
-        self.traverse(self.root_page_id, buffer_pool, &mut result)?;
+        let root_page_id = *self.root_page_id.read().unwrap();
+        self.traverse(root_page_id, buffer_pool, &mut result)?;
         Ok(result)
     }
 }
