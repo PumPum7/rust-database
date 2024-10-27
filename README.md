@@ -29,7 +29,7 @@ This project implements a simple database system with a client-server architectu
 Once connected to the database, you can use the following commands:
 
 - `GET <key>`: Retrieve the value associated with the given key
-- `SET <key> <value>`: Set a key-value pair
+- `SET <key> <value>`: Set a key-value pair (also supports operations like +, -, ...)
 - `UPDATE <key> <value>`: Update an existing key-value pair
 - `DEL <key>`: Delete a key-value pair
 - `EXIT`: Quit the client
@@ -42,7 +42,6 @@ Use TAB for command completion in the client interface.
 - Implement SQL parsing and query execution
 - Add support for more complex data structures and operations
 - Improve error handling and logging
-- Implement data persistence
 
 ## Contributing
 
