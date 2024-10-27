@@ -109,30 +109,3 @@ impl SlottedPage {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_record_operations() -> Result<()> {
-        let page = Page::new(0);
-        let mut slotted_page = SlottedPage::new(page);
-
-        // Insert a record
-        let record1 = b"Hello, World!";
-        let slot1 = slotted_page.insert_record(record1)?;
-
-        // Read it back
-        let retrieved = slotted_page.get_record(slot1)?;
-        assert_eq!(retrieved, record1);
-
-        // Delete the record
-        slotted_page.delete_record(slot1)?;
-
-        // Verify it's deleted
-        assert!(slotted_page.get_record(slot1).is_err());
-
-        Ok(())
-    }
-}

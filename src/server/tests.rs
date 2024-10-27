@@ -8,8 +8,8 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    fn setup_test_server() -> u16 {
-        let db = Database::new("test_server.db").unwrap();
+    fn setup_test_server(test_type: &str) -> u16 {
+        let db = Database::new(test_type).unwrap();
         let port = 5433;
         let server = Server::new(db, port);
 
@@ -32,7 +32,7 @@ mod tests {
 
     #[test]
     fn test_basic_operations() {
-        let port = setup_test_server();
+        let port = setup_test_server("test_basic_operations.db");
         let mut stream = TcpStream::connect(format!("127.0.0.1:{}", port)).unwrap();
 
         // Test different value types
@@ -56,11 +56,22 @@ mod tests {
         assert_eq!(send_command(&mut stream, "GET 1"), "NULL\n");
 
         // Cleanup
-        std::fs::remove_file("test_server.db").unwrap();
+        std::fs::remove_file("test_basic_operations.db").unwrap();
+    }
+
+
+    #[test]
+    fn test_value_operations() {
+        let a = Value::Integer(42);
+        let b = Value::Float(3.14);
+        assert_eq!(a.add(&b).unwrap(), Value::Float(45.14));
     }
 
     #[test]
     fn test_value_parsing() {
         assert_eq!(parse_value("42").unwrap(), Value::Integer(42));
+        assert_eq!(parse_value("3.14").unwrap(), Value::Float(3.14));
+        assert_eq!(parse_value("hello").unwrap(), Value::String("hello".to_string()));
+        assert_eq!(parse_value("true").unwrap(), Value::Boolean(true));
     }
 }

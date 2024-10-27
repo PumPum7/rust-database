@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::storage::error::Result;
-    use crate::storage::{BufferPool, DiskManager, Page};
+    use crate::storage::{BufferPool, DiskManager, Page, SlottedPage};
 
     #[test]
     fn test_buffer_pool_basic_operations() -> Result<()> {
@@ -54,8 +54,6 @@ mod tests {
 
     #[test]
     fn test_slotted_page() -> Result<()> {
-        use crate::storage::SlottedPage;
-
         let mut page = SlottedPage::new(Page::new(0));
 
         // Test inserting records
@@ -66,6 +64,28 @@ mod tests {
         // Test reading records
         assert_eq!(page.get_record(slot1)?, record1);
         assert_eq!(page.get_record(slot2)?, record2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_record_operations() -> Result<()> {
+        let page = Page::new(0);
+        let mut slotted_page = SlottedPage::new(page);
+
+        // Insert a record
+        let record1 = b"Hello, World!";
+        let slot1 = slotted_page.insert_record(record1)?;
+
+        // Read it back
+        let retrieved = slotted_page.get_record(slot1)?;
+        assert_eq!(retrieved, record1);
+
+        // Delete the record
+        slotted_page.delete_record(slot1)?;
+
+        // Verify it's deleted
+        assert!(slotted_page.get_record(slot1).is_err());
 
         Ok(())
     }
