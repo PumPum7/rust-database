@@ -63,4 +63,58 @@ impl Value {
             _ => Err("Invalid type tag".into()),
         }
     }
+
+    pub fn add(&self, other: &Self) -> Result<Self, Box<dyn std::error::Error>> {
+        match (self, other) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a + b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
+            (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
+            (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a + *b as f64)),
+            (Value::String(a), Value::String(b)) => Ok(Value::String(a.clone() + &b)),
+            (Value::Boolean(a), Value::Boolean(b)) => Ok(Value::Boolean(*a && *b)),
+            _ => Err("Invalid types for addition".into()),
+        }
+    }
+
+    pub fn sub(&self, other: &Self) -> Result<Self, Box<dyn std::error::Error>> {
+        match (self, other) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
+            (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
+            (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a - *b as f64)),
+            (Value::Boolean(a), Value::Boolean(b)) => Ok(Value::Boolean(*a || *b)),
+            _ => Err("Invalid types for subtraction".into()),
+        }
+    }
+
+    pub fn eq(&self, other: &Self) -> Result<Value, Box<dyn std::error::Error>> {
+        match (self, other) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Boolean(a == b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Boolean(a == b)),
+            (Value::String(a), Value::String(b)) => Ok(Value::Boolean(a == b)),
+            (Value::Boolean(a), Value::Boolean(b)) => Ok(Value::Boolean(a == b)),
+            (Value::Null, Value::Null) => Ok(Value::Boolean(true)),
+            _ => Ok(Value::Boolean(false)),
+        }
+    }
+
+    pub fn mul(&self, other: &Self) -> Result<Self, Box<dyn std::error::Error>> {
+        match (self, other) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a * b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
+            (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
+            (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a * *b as f64)),
+            _ => Err("Invalid types for multiplication".into()),
+        }
+    }
+
+    pub fn div(&self, other: &Self) -> Result<Self, Box<dyn std::error::Error>> {
+        match (self, other) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a / b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a / b)),
+            (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 / b)),
+            (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a / *b as f64)),
+            _ => Err("Invalid types for division".into()),
+        }
+    }
 }

@@ -1,6 +1,8 @@
 mod tests;
+mod parser;
 
 use std::io::{BufRead, BufReader, Write};
+use self::parser::parse_expression;
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -32,7 +34,15 @@ impl Server {
             if let Ok(stream) = stream {
                 pool.execute(move || {
                     if let Err(e) = handle_client(stream, db) {
-                        eprintln!("Error handling client: {}", e);
+                    if let Some(os_error) = e.raw_os_error() {
+                        if os_error == 35 {
+                            info!("Client disconnected due to inactivity");
+                        } else {
+                            warn!("Error handling client: {}", e);
+                        }
+                    } else {
+                        warn!("Error handling client: {}", e);
+                    }
                     }
                 });
             } else {
@@ -107,11 +117,11 @@ fn handle_command(
             }
         }
         "SET" => {
-            if parts.len() != 3 {
+            if parts.len() < 3 {
                 return Ok("ERROR: Usage: SET <key> <value>\n".to_string());
             }
             let key = parts[1].parse::<i32>()?;
-            let value = parse_value(parts[2])?;
+            let value = parse_expression(&parts[2..], &mut db)?;
             db.insert(key, &value)?;
             Ok("OK\n".to_string())
         }
