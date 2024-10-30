@@ -3,6 +3,7 @@ pub mod storage;
 mod tests;
 
 use index::BTree;
+use storage::error::DatabaseError;
 use std::{path::Path, sync::{Arc, Mutex}};
 pub use storage::{BufferPool, DiskManager, Transaction, TransactionManager, Value};
 use crate::storage::{LogRecord, WriteAheadLog};
@@ -18,9 +19,9 @@ impl Database {
     pub fn new(path: impl AsRef<Path>) -> Result<Self, Box<dyn std::error::Error>> {
         let path = path.as_ref();
         let file_exists = path.exists();
-        let disk_manager = DiskManager::new(path.to_str().unwrap())?;
+        let disk_manager = DiskManager::new(path.to_str().unwrap()).map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
         let mut buffer_pool = BufferPool::new(1000, disk_manager);
-        let wal = WriteAheadLog::new(path.with_extension("wal"))?;
+        let wal = WriteAheadLog::new(path.with_extension("wal")).map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
 
         let root_page_id = if !file_exists {
             // Create and initialize root page for index if this is a new database
@@ -46,7 +47,7 @@ impl Database {
     }
 
     pub fn begin_transaction(&mut self) -> Result<Transaction, Box<dyn std::error::Error>> {
-        Ok(self.transaction_manager.begin_transaction(Arc::clone(&self.wal))?)
+        Ok(self.transaction_manager.begin_transaction(Arc::clone(&self.wal)).map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?)
     }
 
     pub fn insert(&mut self, key: i32, value: &Value) -> Result<(), Box<dyn std::error::Error>> {
@@ -58,7 +59,7 @@ impl Database {
                     page_id: 0,
                     offset: 0,
                     data: value.serialize(),
-                })?;
+                }).map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
                 Ok(())
             },
             Err(e) => {
@@ -86,7 +87,7 @@ impl Database {
                     page_id: 0,
                     offset: 0,
                     data: vec![],
-                })?;
+                }).map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
                 Ok(())
             },
             Err(e) => {
@@ -104,7 +105,7 @@ impl Database {
                     page_id: 0,
                     offset: 0,
                     data: value.serialize(),
-                })?;
+                }).map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
                 Ok(())
             },
             Err(e) => {
@@ -125,7 +126,7 @@ impl Database {
     }
 
     pub fn flush(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.buffer_pool.flush()?;
+        self.buffer_pool.flush().map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
         Ok(())
     }
 }

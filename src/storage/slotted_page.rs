@@ -86,7 +86,8 @@ impl SlottedPage {
         }
 
         let slot_pos = slot_number as usize * SLOT_SIZE;
-        let slot = Slot::deserialize(&self.page.data[slot_pos..slot_pos + SLOT_SIZE])?;
+        let slot = Slot::deserialize(&self.page.data[slot_pos..slot_pos + SLOT_SIZE])
+            .map_err(|_| DatabaseError::InvalidSlot)?;
 
         if slot.length == 0 {
             return Err(DatabaseError::DeletedRecord);

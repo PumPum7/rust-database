@@ -14,7 +14,8 @@ impl DiskManager {
             .read(true)
             .write(true)
             .create(true)
-            .open(file_path)?;
+            .open(file_path)
+            .map_err(|e| DatabaseError::IoError(e))?;
 
         Ok(Self {
             heap_file,
@@ -28,8 +29,11 @@ impl DiskManager {
 
         let zeros = vec![0u8; PAGE_SIZE];
         self.heap_file
-            .seek(SeekFrom::Start(page_id as u64 * PAGE_SIZE as u64))?;
-        self.heap_file.write_all(&zeros)?;
+            .seek(SeekFrom::Start(page_id as u64 * PAGE_SIZE as u64))
+            .map_err(|_| DatabaseError::PageNotFound(page_id))?;
+        self.heap_file
+            .write_all(&zeros)
+            .map_err(|_| DatabaseError::PageNotFound(page_id))?;
 
         Ok(page_id)
     }
@@ -50,9 +54,12 @@ impl DiskManager {
         self.heap_file.seek(SeekFrom::Start(
             page.header.page_id as u64 * PAGE_SIZE as u64,
         ))?;
-        self.heap_file.write_all(&buffer)?;
-        self.heap_file.flush()?;
-        Ok(())
+        self.heap_file
+            .write_all(&buffer)
+            .map_err(|_| DatabaseError::PageNotFound(page.header.page_id))?;
+        self.heap_file
+            .flush()
+            .map_err(|_| DatabaseError::PageNotFound(page.header.page_id))
     }
 
     pub fn free_page(&mut self, page_id: u32) -> Result<()> {
@@ -63,11 +70,12 @@ impl DiskManager {
 
         // Seek to the page location
         self.heap_file
-            .seek(SeekFrom::Start(page_id as u64 * PAGE_SIZE as u64))?;
+            .seek(SeekFrom::Start(page_id as u64 * PAGE_SIZE as u64))
+            .map_err(|_| DatabaseError::PageNotFound(page_id))?;
 
         // Overwrite the page with zeros
         let zeros = vec![0u8; PAGE_SIZE];
-        self.heap_file.write_all(&zeros)?;
+        self.heap_file.write_all(&zeros).map_err(|_| DatabaseError::PageNotFound(page_id))?;
 
         // Flush changes to disk
         self.heap_file.flush()?;
