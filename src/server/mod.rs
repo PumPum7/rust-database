@@ -1,16 +1,8 @@
-mod tests;
-mod parser;
-
-use std::io::{BufRead, BufReader, Write};
-use self::parser::parse_expression;
+use protocol::{Command, Response, connection::Connection};
+use database::{protocol, Database};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use log::{info, warn};
 use threadpool::ThreadPool;
-
-use crate::Database;
-use database::Value;
 
 pub struct Server {
     db: Arc<Mutex<Database>>,
@@ -28,133 +20,75 @@ impl Server {
     pub fn run(&self) -> std::io::Result<()> {
         let pool = ThreadPool::new(4);
         let listener = TcpListener::bind(format!("127.0.0.1:{}", self.port))?;
+        println!("Server listening on port {}", self.port);
 
         for stream in listener.incoming() {
             let db = Arc::clone(&self.db);
             if let Ok(stream) = stream {
                 pool.execute(move || {
                     if let Err(e) = handle_client(stream, db) {
-                    if let Some(os_error) = e.raw_os_error() {
-                        if os_error == 35 {
-                            info!("Client disconnected due to inactivity");
-                        } else {
-                            warn!("Error handling client: {}", e);
-                        }
-                    } else {
-                        warn!("Error handling client: {}", e);
-                    }
+                        eprintln!("Error handling client: {}", e);
                     }
                 });
-            } else {
-                eprintln!("Error accepting client connection");
             }
         }
         Ok(())
     }
 }
 
-fn handle_client(mut stream: TcpStream, db: Arc<Mutex<Database>>) -> std::io::Result<()> {
-    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(30)))?;
-
-    let mut reader = BufReader::new(stream.try_clone()?);
-    let mut line = String::new();
+fn handle_client(
+    stream: TcpStream,
+    db: Arc<Mutex<Database>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut conn = Connection::new(stream);
 
     loop {
-        line.clear();
-        if reader.read_line(&mut line)? == 0 {
-            break;
-        }
+        let command = match conn.receive_command() {
+            Ok(cmd) => cmd,
+            Err(e) => {
+                conn.send_response(Response::Error(e.to_string()))?;
+                continue;
+            }
+        };
 
-        let mut response = handle_command(&line, &db).unwrap_or_else(|e| format!("ERROR: {}", e));
-        // Push an end marker to the response
-        response.push_str("\n===END===\n");
-        stream.write_all(response.as_bytes())?;
-        stream.flush()?;
-    }
-    Ok(())
-}
-
-fn parse_value(s: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    // Try parsing as different types
-    if s == "null" {
-        Ok(Value::Null)
-    } else if s == "true" {
-        return Ok(Value::Boolean(true));
-    } else if s == "false" {
-        return Ok(Value::Boolean(false));
-    } else if let Ok(i) = s.parse::<i64>() {
-        return Ok(Value::Integer(i));
-    } else if let Ok(f) = s.parse::<f64>() {
-        return Ok(Value::Float(f));
-    } else {
-        // If not a number, treat as string
-        Ok(Value::String(s.to_string()))
+        let response = handle_command(command, &db)?;
+        conn.send_response(response)?;
     }
 }
 
 fn handle_command(
-    cmd: &str,
+    command: Command,
     db: &Arc<Mutex<Database>>,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
-    if parts.is_empty() {
-        return Ok("OK\n".to_string());
-    }
-
-    info!("Received command: {}", cmd);
-
+) -> Result<Response, Box<dyn std::error::Error>> {
     let mut db = db.lock().unwrap();
-    match parts[0].to_uppercase().as_str() {
-        "GET" => {
-            if parts.len() != 2 {
-                return Ok("ERROR: Usage: GET <key>\n".to_string());
-            }
-            let key = parts[1].parse::<i32>()?;
-            match db.get(key)? {
-                Some(value) => Ok(format!("{:?}\n", value)),
-                None => Ok("NULL\n".to_string()),
-            }
+
+    match command {
+        Command::Get { key } => {
+            let value = db.get(key)?;
+            Ok(Response::Value(value))
         }
-        "SET" => {
-            if parts.len() < 3 {
-                return Ok("ERROR: Usage: SET <key> <value>\n".to_string());
-            }
-            let key = parts[1].parse::<i32>()?;
-            let value = parse_expression(&parts[2..], &mut db)?;
+        Command::Set { key, value } => {
             db.insert(key, &value)?;
-            Ok("OK\n".to_string())
+            Ok(Response::Ok)
         }
-        "DEL" => {
-            if parts.len() != 2 {
-                return Ok("ERROR: Usage: DEL <key>\n".to_string());
-            }
-            let key = parts[1].parse::<i32>()?;
+        Command::Delete { key } => {
             db.delete(key)?;
-            Ok("OK\n".to_string())
+            Ok(Response::Ok)
         }
-        "UPDATE" => {
-            if parts.len() != 3 {
-                return Ok("ERROR: Usage: UPDATE <key> <value>\n".to_string());
-            }
-            let key = parts[1].parse::<i32>()?;
-            let value = parse_value(parts[2])?;
+        Command::Update { key, value } => {
             db.update(key, &value)?;
-            Ok("OK\n".to_string())
+            Ok(Response::Ok)
         }
-        "ALL" => {
-            let mut response = String::new();
-            for (key, value) in db.all()? {
-                response.push_str(&format!("{}: {:?}\n", key, value));
-            }
-            Ok(response)
+        Command::All => {
+            let results = db.all()?;
+            Ok(Response::Range(results))
         }
-        "EXIT" => {
-            std::process::exit(0);
+        Command::Strlen { key } => {
+            let size = db.strlen(key)?.unwrap_or(0);
+            Ok(Response::Size(size))
         }
-        _ => {
-            warn!("Unknown command: {}", parts[0]);
-            Ok("ERROR: Unknown command\n".to_string())
-        }
+        Command::Ping => Ok(Response::Pong),
+        Command::Exit => std::process::exit(0),
+        _ => Ok(Response::Error("Unknown command".into())),
     }
 }

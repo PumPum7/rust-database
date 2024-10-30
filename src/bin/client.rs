@@ -1,10 +1,11 @@
+use database::protocol::{Command, Response, connection::Connection};
+use database::storage::Value;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
 use rustyline::hint::Hinter;
 use rustyline::validate::{Validator, MatchingBracketValidator};
 use rustyline::{CompletionType, Config, Editor};
-use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 
 #[derive(Default)]
@@ -70,6 +71,127 @@ impl Validator for DbHelper {
 
 impl rustyline::Helper for DbHelper {}
 
+struct Client {
+    conn: Connection,
+}
+
+impl Client {
+    fn new(addr: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let stream = TcpStream::connect(addr)?;
+        Ok(Self {
+            conn: Connection::new(stream),
+        })
+    }
+
+    fn execute_command(&mut self, input: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let command = parse_command(input)?;
+        self.conn.send_command(command)?;
+        
+        match self.conn.receive_response()? {
+            Response::Ok => Ok("OK\n".into()),
+            Response::Value(Some(value)) => Ok(format!("{:?}\n", value)),
+            Response::Value(None) => Ok("NULL\n".into()),
+            Response::Range(results) => {
+                let mut output = String::new();
+                for (key, value) in results {
+                    output.push_str(&format!("{}: {:?}\n", key, value));
+                }
+                Ok(output)
+            },
+            Response::Error(err) => Ok(format!("ERROR: {}\n", err)),
+            Response::Pong => Ok("PONG\n".into()),
+            Response::Size(size) => Ok(format!("{}\n", size)),
+        }
+    }
+}
+
+fn parse_value(s: &str) -> Result<Value, Box<dyn std::error::Error>> {
+    if s == "null" {
+        Ok(Value::Null)
+    } else if s == "true" {
+        Ok(Value::Boolean(true))
+    } else if s == "false" {
+        Ok(Value::Boolean(false))
+    } else if let Ok(i) = s.parse::<i64>() {
+        Ok(Value::Integer(i))
+    } else if let Ok(f) = s.parse::<f64>() {
+        Ok(Value::Float(f))
+    } else {
+        Ok(Value::String(s.to_string()))
+    }
+}
+
+fn parse_command(input: &str) -> Result<Command, Box<dyn std::error::Error>> {
+    let parts: Vec<&str> = input.trim().split_whitespace().collect();
+    if parts.is_empty() {
+        return Err("Empty command".into());
+    }
+
+    match parts[0].to_uppercase().as_str() {
+        "GET" => {
+            if parts.len() != 2 {
+                return Err("Usage: GET <key>".into());
+            }
+            Ok(Command::Get { key: parts[1].parse()? })
+        },
+        "SET" => {
+            if parts.len() < 3 {
+                return Err("Usage: SET <key> <value>".into());
+            }
+            let value = parts[2..].join(" ");
+            Ok(Command::Set {
+                key: parts[1].parse()?,
+                value: parse_value(&value)?,
+            })
+        },
+        "UPDATE" => {
+            if parts.len() < 3 {
+                return Err("Usage: SET <key> <value>".into());
+            }
+            let value = parts[2..].join(" ");
+            Ok(Command::Update {
+                key: parts[1].parse()?,
+                value: parse_value(&value)?,
+            })
+        },
+        "DEL" => {
+            if parts.len() != 2 {
+                return Err("Usage: DEL <key>".into());
+            }
+            Ok(Command::Delete { key: parts[1].parse()? })
+        },
+        "ALL" => Ok(Command::All),
+        "STRLEN" => {
+            if parts.len() != 2 {
+                return Err("Usage: STRLEN <key>".into());
+            }
+            Ok(Command::Strlen { key: parts[1].parse()? })
+        },
+        "STRCAT" => {
+            if parts.len() < 3 {
+                return Err("Usage: STRCAT <key> <value>".into());
+            }
+            let value = parts[2..].join(" ");
+            Ok(Command::Strcat {
+                key: parts[1].parse()?,
+                value: parse_value(&value)?,
+            })
+        },
+        "SUBSTR" => {
+            if parts.len() != 4 {
+                return Err("Usage: SUBSTR <key> <start> <length>".into());
+            }
+            Ok(Command::Substr {
+                key: parts[1].parse()?,
+                start: parts[2].parse()?,
+                length: parts[3].parse()?,
+            })
+        },
+        "EXIT" => Ok(Command::Exit),
+        _ => Err("Unknown command".into()),
+    }
+}
+
 fn print_header() {
     println!(
         r#"
@@ -86,7 +208,7 @@ fn print_header() {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     print_header();
 
-    let mut stream = TcpStream::connect("127.0.0.1:5432")?;
+    let mut client = Client::new("127.0.0.1:5432")?;
 
     let helper = DbHelper {
         commands: vec![
@@ -151,20 +273,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             "exit" => break,
             cmd => {
-                stream.write_all(format!("{}\n", cmd).as_bytes())?;
-                stream.flush()?;
-
-                let mut reader = BufReader::new(&stream);
-                let mut response = String::new();
-                loop {
-                    let mut line = String::new();
-                    reader.read_line(&mut line)?;
-                    if line.trim() == "===END===" {
-                        break;
-                    }
-                    response.push_str(&line);
+                match client.execute_command(cmd) {
+                    Ok(response) => print!("{}", response),
+                    Err(e) => println!("Error: {}", e),
                 }
-                print!("{}", response);
             }
         }
     }
