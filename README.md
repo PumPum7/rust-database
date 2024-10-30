@@ -7,7 +7,6 @@ This project implements a simple database system with a client-server architectu
 - TCP-based client-server communication
 - Interactive command-line interface for the client
 - Basic key-value store operations (GET, SET, UPDATE, DEL)
-- SQL parsing (in progress)
 - B-tree index for efficient data storage and retrieval
 
 ## Project Structure
@@ -39,8 +38,6 @@ Use TAB for command completion in the client interface.
 
 ## Future Improvements
 
-- Implement SQL parsing and query execution
-- Add support for more complex data structures and operations
 - Improve error handling and logging
 
 ## Contributing
