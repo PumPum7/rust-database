@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TransactionId(u64);
+pub struct TransactionId(pub u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VersionId {
@@ -28,9 +28,9 @@ impl VersionId {
 }
 
 pub struct Transaction {
-    id: TransactionId,
-    is_active: bool,
-    wal: Option<Arc<Mutex<WriteAheadLog>>>,
+    pub id: TransactionId,
+    pub is_active: bool,
+    pub wal: Option<Arc<Mutex<WriteAheadLog>>>,
 }
 
 

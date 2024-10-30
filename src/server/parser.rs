@@ -21,6 +21,17 @@ pub fn parse_expression(
                 None => Ok(Value::Null),
             }
         }
+        "STRLEN" => {
+            if tokens.len() != 2 {
+                return Err("Invalid STRLEN syntax".into());
+            }
+            let key = tokens[1].parse::<i32>()?;
+            let value = db.strlen(key)?;
+            match value {
+                Some(value) => Ok(Value::Integer(value as i64)),
+                None => Ok(Value::Null),
+            }
+        }
         "(" => {
             if tokens.len() < 4 || tokens[tokens.len() - 1] != ")" {
                 return Err("Invalid parentheses".into());

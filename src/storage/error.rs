@@ -34,6 +34,15 @@ pub enum DatabaseError {
 
     #[error("Invalid data: {0}")]
     InvalidData(String),
+
+    #[error("Key not found")]
+    KeyNotFound(i32),
+
+    #[error("Transaction not active")]
+    TransactionNotActive,
+
+    #[error("Transaction already committed")]
+    TransactionAlreadyCommitted,
 }
 
 pub type Result<T> = std::result::Result<T, DatabaseError>;

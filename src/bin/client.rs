@@ -95,6 +95,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "UPDATE".to_string(),
             "DEL".to_string(),
             "ALL".to_string(),
+            "STRLEN".to_string(),
+            "STRCAT".to_string(),
+            "SUBSTR".to_string(),
             "exit".to_string(),
             "help".to_string(),
         ],
@@ -130,13 +133,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match readline.trim() {
             "help" => {
                 println!("Available commands:");
-                println!("  GET <key>           - Get value by key");
-                println!("  SET <key> <value>   - Set key-value pair");
-                println!("  UPDATE <key> <value> - Update key-value pair");
-                println!("  DEL <key>           - Delete key-value pair");
-                println!("  ALL                 - Get all key-value pairs");
-                println!("  exit                - Exit the client");
-                println!("  help                - Show this help message");
+                println!("┌────────────────────────────┬──────────────────────────────────┐");
+                println!("│ Command                    │ Description                      │");
+                println!("├────────────────────────────┼──────────────────────────────────┤");
+                println!("│ GET <key>                  │ Get value by key                 │");
+                println!("│ SET <key> <value>          │ Set key-value pair               │");
+                println!("│ UPDATE <key> <value>       │ Update key-value pair            │");
+                println!("│ DEL <key>                  │ Delete key-value pair            │");
+                println!("│ ALL                        │ Get all key-value pairs          │");
+                println!("│ STRLEN <key>               │ Get length of value by key       │");
+                println!("│ STRCAT <key> <value>       │ Concatenate value to key         │");
+                println!("│ SUBSTR <key> <start> <len> │ Get substring of value by key    │");
+                println!("│ exit                       │ Exit the client                  │");
+                println!("│ help                       │ Show this help message           │");
+                println!("└────────────────────────────┴──────────────────────────────────┘");
                 continue;
             }
             "exit" => break,

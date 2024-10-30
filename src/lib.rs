@@ -3,15 +3,15 @@ pub mod storage;
 mod tests;
 
 use index::BTree;
-use storage::error::DatabaseError;
+use storage::{error::DatabaseError, operations};
 use std::{path::Path, sync::{Arc, Mutex}};
 pub use storage::{BufferPool, DiskManager, Transaction, TransactionManager, Value};
-use crate::storage::{LogRecord, WriteAheadLog};
+use crate::storage::WriteAheadLog;
 
 pub struct Database {
     buffer_pool: BufferPool,
     transaction_manager: TransactionManager,
-    index: BTree,
+    index: Arc<Mutex<BTree>>,
     wal: Arc<Mutex<WriteAheadLog>>,
 }
 
@@ -41,7 +41,7 @@ impl Database {
         Ok(Self {
             buffer_pool,
             transaction_manager: TransactionManager::new(),
-            index: btree,
+            index: Arc::new(Mutex::new(btree)),
             wal: Arc::new(Mutex::new(wal)),
         })
     }
@@ -51,78 +51,70 @@ impl Database {
     }
 
     pub fn insert(&mut self, key: i32, value: &Value) -> Result<(), Box<dyn std::error::Error>> {
-        // Add error handling and logging for debugging
-        match self.index.insert(key, value.clone(), &mut self.buffer_pool) {
-            Ok(()) => {
-                self.wal.lock().unwrap().log(LogRecord::Write {
-                    txn_id: 0,
-                    page_id: 0,
-                    offset: 0,
-                    data: value.serialize(),
-                }).map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
-                Ok(())
-            },
-            Err(e) => {
-                eprintln!("Error inserting key {}: {}", key, e);
-                Err(Box::new(e))
-            }
+        let mut txn = self.begin_transaction()?;
+        let result = operations::insert(&mut txn, &self.index, &mut self.buffer_pool, key, value);
+        if result.is_ok() {
+            txn.commit()?;
+        } else {
+            txn.rollback()?;
         }
-    }
-
-    pub fn get(&mut self, key: i32) -> Result<Option<Value>, Box<dyn std::error::Error>> {
-        match self.index.search(key, &mut self.buffer_pool) {
-            Ok(result) => Ok(result),
-            Err(e) => {
-                eprintln!("Error searching for key {}: {}", key, e);
-                Err(Box::new(e))
-            }
-        }
+        result
     }
 
     pub fn delete(&mut self, key: i32) -> Result<(), Box<dyn std::error::Error>> {
-        match self.index.delete(key, &mut self.buffer_pool) {
-            Ok(()) => {
-                self.wal.lock().unwrap().log(LogRecord::Write {
-                    txn_id: 0,
-                    page_id: 0,
-                    offset: 0,
-                    data: vec![],
-                }).map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
-                Ok(())
-            },
-            Err(e) => {
-                eprintln!("Error deleting key {}: {}", key, e);
-                Err(Box::new(e))
-            }
+        let mut txn = self.begin_transaction()?;
+        let result = operations::delete(&mut txn, &self.index, &mut self.buffer_pool, key);
+        if result.is_ok() {
+            txn.commit()?;
+        } else {
+            txn.rollback()?;
         }
+        result
     }
 
     pub fn update(&mut self, key: i32, value: &Value) -> Result<(), Box<dyn std::error::Error>> {
-        match self.index.update(key, value.clone(), &mut self.buffer_pool) {
-            Ok(()) => {
-                self.wal.lock().unwrap().log(LogRecord::Write {
-                    txn_id: 0,
-                    page_id: 0,
-                    offset: 0,
-                    data: value.serialize(),
-                }).map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
-                Ok(())
-            },
-            Err(e) => {
-                eprintln!("Error updating key {}: {}", key, e);
-                Err(Box::new(e))
-            }
+        let mut txn = self.begin_transaction()?;
+        let result = operations::update(&mut txn, &self.index, &mut self.buffer_pool, key, value);
+        if result.is_ok() {
+            txn.commit()?;
+        } else {
+            txn.rollback()?;
         }
+        result
+    }
+
+    pub fn get(&mut self, key: i32) -> Result<Option<Value>, Box<dyn std::error::Error>> {
+        operations::get(&self.index, &mut self.buffer_pool, key)
     }
 
     pub fn all(&mut self) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
-        match self.index.all(&mut self.buffer_pool) {
-            Ok(result) => Ok(result),
-            Err(e) => {
-                eprintln!("Error fetching all keys: {}", e);
-                Err(Box::new(e))
-            }
+        operations::all(&self.index, &mut self.buffer_pool)
+    }
+
+    pub fn strlen(&mut self, key: i32) -> Result<Option<usize>, Box<dyn std::error::Error>> {
+        operations::strlen(&self.index, &mut self.buffer_pool, key)
+    }
+
+    pub fn strcat(&mut self, key: i32, value: &Value) -> Result<(), Box<dyn std::error::Error>> {
+        let mut txn = self.begin_transaction()?;
+        let result = operations::strcat(&mut txn, &self.index, &mut self.buffer_pool, key, value);
+        if result.is_ok() {
+            txn.commit()?;
+        } else {
+            txn.rollback()?;
         }
+        result
+    }
+
+    pub fn substr(&mut self, key: i32, start: usize, length: usize) -> Result<(), Box<dyn std::error::Error>> {
+        let mut txn = self.begin_transaction()?;
+        let result = operations::substr(&mut txn, &self.index, &mut self.buffer_pool, key, start, length);
+        if result.is_ok() {
+            txn.commit()?;
+        } else {
+            txn.rollback()?;
+        }
+        result
     }
 
     pub fn flush(&mut self) -> Result<(), Box<dyn std::error::Error>> {

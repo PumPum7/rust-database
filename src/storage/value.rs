@@ -117,4 +117,13 @@ impl Value {
             _ => Err("Invalid types for division".into()),
         }
     }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Value::Integer(i) => i.to_string(),
+            Value::Float(f) => f.to_string(),
+            Value::String(s) => s.clone(),
+            _ => "".to_string(),
+        }
+    }
 }

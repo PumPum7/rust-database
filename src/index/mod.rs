@@ -187,6 +187,10 @@ impl BTree {
         Ok(())
     }
 
+    pub fn root_page_id(&self) -> u32 {
+        *self.root_page_id.read().unwrap()
+    }
+
     pub fn search(&self, key: i32, buffer_pool: &mut BufferPool) -> Result<Option<Value>> {
         let mut current_page_id = *self.root_page_id.read().unwrap();
 
@@ -347,7 +351,7 @@ impl BTree {
 
     pub fn delete(&mut self, key: i32, buffer_pool: &mut BufferPool) -> Result<()> {
         let root_page_id = *self.root_page_id.read().unwrap();
-        self.delete_key(root_page_id, key, buffer_pool)
+        self.delete_key(root_page_id, key, buffer_pool).map_err(|_| DatabaseError::KeyNotFound(key))
     }
 
     fn delete_key(&mut self, page_id: u32, key: i32, buffer_pool: &mut BufferPool) -> Result<()> {
@@ -535,7 +539,7 @@ impl BTree {
     }
 
     pub fn update(&mut self, key: i32, value: Value, buffer_pool: &mut BufferPool) -> Result<()> {
-        self.delete(key, buffer_pool)?;
+        let _ = self.delete(key, buffer_pool);
         self.insert(key, value, buffer_pool)
     }
 
