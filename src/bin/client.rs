@@ -1,5 +1,5 @@
-use database::protocol::{connection::Connection, Command, Response};
-use database::storage::Value;
+use database::protocol::ProtocolError;
+use database::protocol::{connection::Connection, Response};
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
@@ -84,119 +84,42 @@ impl Client {
     }
 
     fn execute_command(&mut self, input: &str) -> Result<String, Box<dyn std::error::Error>> {
-        let command = parse_command(input)?;
-        self.conn.send_command(command)?;
+        if input.trim().is_empty() {
+            return Ok(String::new());
+        }
 
-        match self.conn.receive_response()? {
-            Response::Ok => Ok("OK\n".into()),
-            Response::Value(Some(value)) => Ok(format!("{:?}\n", value)),
-            Response::Value(None) => Ok("NULL\n".into()),
-            Response::Range(results) => {
-                let mut output = String::new();
-                for (key, value) in results {
-                    output.push_str(&format!("{}: {:?}\n", key, value));
-                }
-                Ok(output)
+        match self.conn.send_raw_command(input) {
+            Ok(_) => {},
+            Err(ProtocolError::ConnectionClosed) => {
+                return Err("Connection closed by server".into());
             }
-            Response::Error(err) => Ok(format!("ERROR: {}\n", err)),
-            Response::Pong => Ok("PONG\n".into()),
-            Response::Size(size) => Ok(format!("{}\n", size)),
+            Err(e) => return Err(Box::new(e)),
+        }
+
+        match self.conn.receive_response() {
+            Ok(response) => match response {
+                Response::Ok => Ok("OK\n".into()),
+                Response::Value(Some(value)) => Ok(format!("{:?}\n", value)),
+                Response::Value(None) => Ok("NULL\n".into()),
+                Response::Range(results) => {
+                    let mut output = String::new();
+                    for (key, value) in results {
+                        output.push_str(&format!("{}: {:?}\n", key, value));
+                    }
+                    Ok(output)
+                },
+                Response::Error(err) => Ok(format!("ERROR: {}\n", err)),
+                Response::Pong => Ok("PONG\n".into()),
+                Response::Size(size) => Ok(format!("{}\n", size)),
+            },
+            Err(ProtocolError::ConnectionClosed) => {
+                Err("Connection closed by server".into())
+            },
+            Err(e) => Err(Box::new(e)),
         }
     }
 }
 
-fn parse_value(s: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    if s == "null" {
-        Ok(Value::Null)
-    } else if s == "true" {
-        Ok(Value::Boolean(true))
-    } else if s == "false" {
-        Ok(Value::Boolean(false))
-    } else if let Ok(i) = s.parse::<i64>() {
-        Ok(Value::Integer(i))
-    } else if let Ok(f) = s.parse::<f64>() {
-        Ok(Value::Float(f))
-    } else {
-        Ok(Value::String(s.to_string()))
-    }
-}
-
-fn parse_command(input: &str) -> Result<Command, Box<dyn std::error::Error>> {
-    let parts: Vec<&str> = input.trim().split_whitespace().collect();
-    if parts.is_empty() {
-        return Err("Empty command".into());
-    }
-
-    match parts[0].to_uppercase().as_str() {
-        "GET" => {
-            if parts.len() != 2 {
-                return Err("Usage: GET <key>".into());
-            }
-            Ok(Command::Get {
-                key: parts[1].parse()?,
-            })
-        }
-        "SET" => {
-            if parts.len() < 3 {
-                return Err("Usage: SET <key> <value>".into());
-            }
-            let value = parts[2..].join(" ");
-            Ok(Command::Set {
-                key: parts[1].parse()?,
-                value: parse_value(&value)?,
-            })
-        }
-        "UPDATE" => {
-            if parts.len() < 3 {
-                return Err("Usage: SET <key> <value>".into());
-            }
-            let value = parts[2..].join(" ");
-            Ok(Command::Update {
-                key: parts[1].parse()?,
-                value: parse_value(&value)?,
-            })
-        }
-        "DEL" => {
-            if parts.len() != 2 {
-                return Err("Usage: DEL <key>".into());
-            }
-            Ok(Command::Delete {
-                key: parts[1].parse()?,
-            })
-        }
-        "ALL" => Ok(Command::All),
-        "STRLEN" => {
-            if parts.len() != 2 {
-                return Err("Usage: STRLEN <key>".into());
-            }
-            Ok(Command::Strlen {
-                key: parts[1].parse()?,
-            })
-        }
-        "STRCAT" => {
-            if parts.len() < 3 {
-                return Err("Usage: STRCAT <key> <value>".into());
-            }
-            let value = parts[2..].join(" ");
-            Ok(Command::Strcat {
-                key: parts[1].parse()?,
-                value: parse_value(&value)?,
-            })
-        }
-        "SUBSTR" => {
-            if parts.len() != 4 {
-                return Err("Usage: SUBSTR <key> <start> <length>".into());
-            }
-            Ok(Command::Substr {
-                key: parts[1].parse()?,
-                start: parts[2].parse()?,
-                length: parts[3].parse()?,
-            })
-        }
-        "EXIT" => Ok(Command::Exit),
-        _ => Err("Unknown command".into()),
-    }
-}
 
 fn print_header() {
     println!(
@@ -209,6 +132,29 @@ fn print_header() {
 
         "#
     );
+}
+
+fn print_help() -> String {
+    r#"Available commands:
+┌────────────────────────────┬──────────────────────────────────┐
+│ Command                    │ Description                      │
+├────────────────────────────┼──────────────────────────────────┤
+│ GET <key>                  │ Get value by key                 │
+│ SET <key> <expression>     │ Set key to expression result     │
+│ UPDATE <key> <expression>  │ Update key with expression       │
+│ DEL <key>                  │ Delete key-value pair            │
+│ ALL                        │ Get all key-value pairs          │
+│ STRLEN <key>               │ Get length of value by key       │
+│ STRCAT <key> <value>       │ Concatenate value to key         │
+│ SUBSTR <key> <start> <len> │ Get substring of value by key    │
+│ Expression Examples:       │                                  │
+│ SET 3 GET 1 + GET 2        │ Set 3 to sum of values           │
+│ SET 2 (GET 1 * 2) + 5      │ Set 2 to expression result       │
+│ GET 1 + 3.14               │ Calculate expression             │
+│ exit                       │ Exit the client                  │
+│ help                       │ Show this help message           │
+└────────────────────────────┴──────────────────────────────────┘"#
+        .to_string()
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -260,22 +206,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         match readline.trim() {
             "help" => {
-                println!("Available commands:");
-                println!("┌────────────────────────────┬──────────────────────────────────┐");
-                println!("│ Command                    │ Description                      │");
-                println!("├────────────────────────────┼──────────────────────────────────┤");
-                println!("│ GET <key>                  │ Get value by key                 │");
-                println!("│ SET <key> <value>          │ Set key-value pair               │");
-                println!("│ UPDATE <key> <value>       │ Update key-value pair            │");
-                println!("│ DEL <key>                  │ Delete key-value pair            │");
-                println!("│ ALL                        │ Get all key-value pairs          │");
-                println!("│ STRLEN <key>               │ Get length of value by key       │");
-                println!("│ STRCAT <key> <value>       │ Concatenate value to key         │");
-                println!("│ SUBSTR <key> <start> <len> │ Get substring of value by key    │");
-                println!("│ exit                       │ Exit the client                  │");
-                println!("│ help                       │ Show this help message           │");
-                println!("└────────────────────────────┴──────────────────────────────────┘");
-                continue;
+                println!("{}", print_help())
             }
             "exit" => break,
             cmd => match client.execute_command(cmd) {
