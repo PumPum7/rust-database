@@ -1,6 +1,6 @@
 use super::error::{DatabaseError, Result};
 use std::fs::{File, OpenOptions};
-use std::io::{Write};
+use std::io::Write;
 use std::path::Path;
 use crc32fast::Hasher;
 
@@ -36,6 +36,10 @@ impl WriteAheadLog {
         })
     }
 
+    pub fn get_sequence(&self) -> u64 {
+        self.sequence
+    }
+
     pub fn log(&mut self, record: LogRecord) -> Result<()> {
         self.sequence += 1;
         let mut hasher = Hasher::new();
@@ -56,10 +60,14 @@ impl WriteAheadLog {
             LogRecord::Commit(txn_id) => {
                 self.log_file.write_all(&[2])?;
                 self.log_file.write_all(&txn_id.to_le_bytes())?;
+                hasher.update(&[2]);
+                hasher.update(&txn_id.to_le_bytes());
             }
             LogRecord::Rollback(txn_id) => {
                 self.log_file.write_all(&[3])?;
                 self.log_file.write_all(&txn_id.to_le_bytes())?;
+                hasher.update(&[3]);
+                hasher.update(&txn_id.to_le_bytes());
             }
             LogRecord::Write {
                 txn_id,

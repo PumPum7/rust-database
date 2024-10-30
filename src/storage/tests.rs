@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::storage::error::Result;
-    use crate::storage::{BufferPool, DiskManager, Page, SlottedPage};
+    use crate::storage::{BufferPool, DiskManager, LogRecord, Page, SlottedPage, WriteAheadLog};
 
     #[test]
     fn test_buffer_pool_basic_operations() -> Result<()> {
@@ -86,6 +86,18 @@ mod tests {
 
         // Verify it's deleted
         assert!(slotted_page.get_record(slot1).is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_wal() -> Result<()> {
+        let mut wal = WriteAheadLog::new("test_wal.db")?;
+        wal.log(LogRecord::Begin(1))?;
+        wal.log(LogRecord::Commit(1))?;
+        wal.log(LogRecord::Rollback(1))?;
+
+        assert_eq!(wal.get_sequence(), 3);
 
         Ok(())
     }

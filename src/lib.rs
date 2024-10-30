@@ -3,7 +3,7 @@ pub mod storage;
 mod tests;
 
 use index::BTree;
-use std::path::Path;
+use std::{path::Path, sync::{Arc, Mutex}};
 pub use storage::{BufferPool, DiskManager, Transaction, TransactionManager, Value};
 use crate::storage::{LogRecord, WriteAheadLog};
 
@@ -11,7 +11,7 @@ pub struct Database {
     buffer_pool: BufferPool,
     transaction_manager: TransactionManager,
     index: BTree,
-    wal: WriteAheadLog,
+    wal: Arc<Mutex<WriteAheadLog>>,
 }
 
 impl Database {
@@ -41,19 +41,19 @@ impl Database {
             buffer_pool,
             transaction_manager: TransactionManager::new(),
             index: btree,
-            wal,
+            wal: Arc::new(Mutex::new(wal)),
         })
     }
 
     pub fn begin_transaction(&mut self) -> Result<Transaction, Box<dyn std::error::Error>> {
-        Ok(self.transaction_manager.begin_transaction()?)
+        Ok(self.transaction_manager.begin_transaction(Arc::clone(&self.wal))?)
     }
 
     pub fn insert(&mut self, key: i32, value: &Value) -> Result<(), Box<dyn std::error::Error>> {
         // Add error handling and logging for debugging
         match self.index.insert(key, value.clone(), &mut self.buffer_pool) {
             Ok(()) => {
-                self.wal.log(LogRecord::Write {
+                self.wal.lock().unwrap().log(LogRecord::Write {
                     txn_id: 0,
                     page_id: 0,
                     offset: 0,
@@ -81,7 +81,7 @@ impl Database {
     pub fn delete(&mut self, key: i32) -> Result<(), Box<dyn std::error::Error>> {
         match self.index.delete(key, &mut self.buffer_pool) {
             Ok(()) => {
-                self.wal.log(LogRecord::Write {
+                self.wal.lock().unwrap().log(LogRecord::Write {
                     txn_id: 0,
                     page_id: 0,
                     offset: 0,
@@ -99,7 +99,7 @@ impl Database {
     pub fn update(&mut self, key: i32, value: &Value) -> Result<(), Box<dyn std::error::Error>> {
         match self.index.update(key, value.clone(), &mut self.buffer_pool) {
             Ok(()) => {
-                self.wal.log(LogRecord::Write {
+                self.wal.lock().unwrap().log(LogRecord::Write {
                     txn_id: 0,
                     page_id: 0,
                     offset: 0,
