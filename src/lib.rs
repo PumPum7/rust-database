@@ -1,12 +1,16 @@
 pub mod index;
+pub mod protocol;
 pub mod storage;
 mod tests;
 
-use index::BTree;
-use storage::{error::DatabaseError, operations};
-use std::{path::Path, sync::{Arc, Mutex}};
-pub use storage::{BufferPool, DiskManager, Transaction, TransactionManager, Value};
 use crate::storage::WriteAheadLog;
+use index::BTree;
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
+use storage::{error::DatabaseError, operations};
+pub use storage::{BufferPool, DiskManager, Transaction, TransactionManager, Value};
 
 pub struct Database {
     buffer_pool: BufferPool,
@@ -19,9 +23,11 @@ impl Database {
     pub fn new(path: impl AsRef<Path>) -> Result<Self, Box<dyn std::error::Error>> {
         let path = path.as_ref();
         let file_exists = path.exists();
-        let disk_manager = DiskManager::new(path.to_str().unwrap()).map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
+        let disk_manager = DiskManager::new(path.to_str().unwrap())
+            .map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
         let mut buffer_pool = BufferPool::new(1000, disk_manager);
-        let wal = WriteAheadLog::new(path.with_extension("wal")).map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
+        let wal = WriteAheadLog::new(path.with_extension("wal"))
+            .map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
 
         let root_page_id = if !file_exists {
             // Create and initialize root page for index if this is a new database
@@ -47,7 +53,10 @@ impl Database {
     }
 
     pub fn begin_transaction(&mut self) -> Result<Transaction, Box<dyn std::error::Error>> {
-        Ok(self.transaction_manager.begin_transaction(Arc::clone(&self.wal)).map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?)
+        Ok(self
+            .transaction_manager
+            .begin_transaction(Arc::clone(&self.wal))
+            .map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?)
     }
 
     pub fn insert(&mut self, key: i32, value: &Value) -> Result<(), Box<dyn std::error::Error>> {
@@ -106,9 +115,21 @@ impl Database {
         result
     }
 
-    pub fn substr(&mut self, key: i32, start: usize, length: usize) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn substr(
+        &mut self,
+        key: i32,
+        start: usize,
+        length: usize,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut txn = self.begin_transaction()?;
-        let result = operations::substr(&mut txn, &self.index, &mut self.buffer_pool, key, start, length);
+        let result = operations::substr(
+            &mut txn,
+            &self.index,
+            &mut self.buffer_pool,
+            key,
+            start,
+            length,
+        );
         if result.is_ok() {
             txn.commit()?;
         } else {
@@ -118,7 +139,9 @@ impl Database {
     }
 
     pub fn flush(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.buffer_pool.flush().map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
+        self.buffer_pool
+            .flush()
+            .map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
         Ok(())
     }
 }
