@@ -1,5 +1,5 @@
-use protocol::{Command, Response, connection::Connection};
 use database::{protocol, Database};
+use protocol::{connection::Connection, Command, Response};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use threadpool::ThreadPool;

@@ -1,8 +1,8 @@
 use crate::storage::Value;
 use serde::{Deserialize, Serialize};
 
-mod tests;
 pub mod connection;
+mod tests;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Command {

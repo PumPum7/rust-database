@@ -75,7 +75,9 @@ impl DiskManager {
 
         // Overwrite the page with zeros
         let zeros = vec![0u8; PAGE_SIZE];
-        self.heap_file.write_all(&zeros).map_err(|_| DatabaseError::PageNotFound(page_id))?;
+        self.heap_file
+            .write_all(&zeros)
+            .map_err(|_| DatabaseError::PageNotFound(page_id))?;
 
         // Flush changes to disk
         self.heap_file.flush()?;

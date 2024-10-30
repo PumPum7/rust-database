@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::protocol::{Command, Response};
     use crate::protocol::connection::Connection;
+    use crate::protocol::{Command, Response};
     use crate::Value;
     use std::net::{TcpListener, TcpStream};
     use std::thread;
@@ -41,7 +41,13 @@ mod tests {
             let mut conn = Connection::new(stream);
 
             let command = conn.receive_command().unwrap();
-            assert!(matches!(command, Command::Update { key: 1, value: Value::String(_) }));
+            assert!(matches!(
+                command,
+                Command::Update {
+                    key: 1,
+                    value: Value::String(_)
+                }
+            ));
 
             conn.send_response(Response::Ok).unwrap();
         });
@@ -49,7 +55,11 @@ mod tests {
         let stream = TcpStream::connect(addr).unwrap();
         let mut conn = Connection::new(stream);
 
-        conn.send_command(Command::Update { key: 1, value: Value::String("Hello, world!".to_string()) }).unwrap();
+        conn.send_command(Command::Update {
+            key: 1,
+            value: Value::String("Hello, world!".to_string()),
+        })
+        .unwrap();
         let response = conn.receive_response().unwrap();
         assert!(matches!(response, Response::Ok));
     }

@@ -33,7 +33,6 @@ pub struct Transaction {
     pub wal: Option<Arc<Mutex<WriteAheadLog>>>,
 }
 
-
 pub struct TransactionManager {
     next_txn_id: AtomicU64,
     active_txns: Mutex<Vec<TransactionId>>,

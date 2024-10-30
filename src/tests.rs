@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use crate::{Database, Path, Value};
     use std::fs;
-    use crate::{Database, Value, Path};
 
     #[test]
     fn test_database_operations() -> Result<(), Box<dyn std::error::Error>> {

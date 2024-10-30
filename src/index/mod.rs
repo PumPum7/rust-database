@@ -233,7 +233,7 @@ impl BTree {
             let mut root_page_id_write = self.root_page_id.write().unwrap();
             *root_page_id_write = new_root.page_id;
             // Insert into new root
-            
+
             drop(root_page_id_write);
             self.insert_non_full(new_root.page_id, key, value, buffer_pool)?;
         } else {
@@ -351,7 +351,8 @@ impl BTree {
 
     pub fn delete(&mut self, key: i32, buffer_pool: &mut BufferPool) -> Result<()> {
         let root_page_id = *self.root_page_id.read().unwrap();
-        self.delete_key(root_page_id, key, buffer_pool).map_err(|_| DatabaseError::KeyNotFound(key))
+        self.delete_key(root_page_id, key, buffer_pool)
+            .map_err(|_| DatabaseError::KeyNotFound(key))
     }
 
     fn delete_key(&mut self, page_id: u32, key: i32, buffer_pool: &mut BufferPool) -> Result<()> {

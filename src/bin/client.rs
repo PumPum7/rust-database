@@ -1,10 +1,10 @@
-use database::protocol::{Command, Response, connection::Connection};
+use database::protocol::{connection::Connection, Command, Response};
 use database::storage::Value;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
 use rustyline::hint::Hinter;
-use rustyline::validate::{Validator, MatchingBracketValidator};
+use rustyline::validate::{MatchingBracketValidator, Validator};
 use rustyline::{CompletionType, Config, Editor};
 use std::net::TcpStream;
 
@@ -86,7 +86,7 @@ impl Client {
     fn execute_command(&mut self, input: &str) -> Result<String, Box<dyn std::error::Error>> {
         let command = parse_command(input)?;
         self.conn.send_command(command)?;
-        
+
         match self.conn.receive_response()? {
             Response::Ok => Ok("OK\n".into()),
             Response::Value(Some(value)) => Ok(format!("{:?}\n", value)),
@@ -97,7 +97,7 @@ impl Client {
                     output.push_str(&format!("{}: {:?}\n", key, value));
                 }
                 Ok(output)
-            },
+            }
             Response::Error(err) => Ok(format!("ERROR: {}\n", err)),
             Response::Pong => Ok("PONG\n".into()),
             Response::Size(size) => Ok(format!("{}\n", size)),
@@ -132,8 +132,10 @@ fn parse_command(input: &str) -> Result<Command, Box<dyn std::error::Error>> {
             if parts.len() != 2 {
                 return Err("Usage: GET <key>".into());
             }
-            Ok(Command::Get { key: parts[1].parse()? })
-        },
+            Ok(Command::Get {
+                key: parts[1].parse()?,
+            })
+        }
         "SET" => {
             if parts.len() < 3 {
                 return Err("Usage: SET <key> <value>".into());
@@ -143,7 +145,7 @@ fn parse_command(input: &str) -> Result<Command, Box<dyn std::error::Error>> {
                 key: parts[1].parse()?,
                 value: parse_value(&value)?,
             })
-        },
+        }
         "UPDATE" => {
             if parts.len() < 3 {
                 return Err("Usage: SET <key> <value>".into());
@@ -153,20 +155,24 @@ fn parse_command(input: &str) -> Result<Command, Box<dyn std::error::Error>> {
                 key: parts[1].parse()?,
                 value: parse_value(&value)?,
             })
-        },
+        }
         "DEL" => {
             if parts.len() != 2 {
                 return Err("Usage: DEL <key>".into());
             }
-            Ok(Command::Delete { key: parts[1].parse()? })
-        },
+            Ok(Command::Delete {
+                key: parts[1].parse()?,
+            })
+        }
         "ALL" => Ok(Command::All),
         "STRLEN" => {
             if parts.len() != 2 {
                 return Err("Usage: STRLEN <key>".into());
             }
-            Ok(Command::Strlen { key: parts[1].parse()? })
-        },
+            Ok(Command::Strlen {
+                key: parts[1].parse()?,
+            })
+        }
         "STRCAT" => {
             if parts.len() < 3 {
                 return Err("Usage: STRCAT <key> <value>".into());
@@ -176,7 +182,7 @@ fn parse_command(input: &str) -> Result<Command, Box<dyn std::error::Error>> {
                 key: parts[1].parse()?,
                 value: parse_value(&value)?,
             })
-        },
+        }
         "SUBSTR" => {
             if parts.len() != 4 {
                 return Err("Usage: SUBSTR <key> <start> <length>".into());
@@ -186,7 +192,7 @@ fn parse_command(input: &str) -> Result<Command, Box<dyn std::error::Error>> {
                 start: parts[2].parse()?,
                 length: parts[3].parse()?,
             })
-        },
+        }
         "EXIT" => Ok(Command::Exit),
         _ => Err("Unknown command".into()),
     }
@@ -272,12 +278,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
             "exit" => break,
-            cmd => {
-                match client.execute_command(cmd) {
-                    Ok(response) => print!("{}", response),
-                    Err(e) => println!("Error: {}", e),
-                }
-            }
+            cmd => match client.execute_command(cmd) {
+                Ok(response) => print!("{}", response),
+                Err(e) => println!("Error: {}", e),
+            },
         }
     }
 
