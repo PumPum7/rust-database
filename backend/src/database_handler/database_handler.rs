@@ -1,16 +1,19 @@
-pub mod index;
-pub mod protocol;
-pub mod storage;
-mod tests;
-
-use crate::storage::WriteAheadLog;
-use index::BTree;
 use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
-use storage::{error::DatabaseError, operations};
-pub use storage::{BufferPool, DiskManager, Transaction, TransactionManager, Value};
+
+use crate::{
+    btree::BTree,
+    storage::{buffer_pool::BufferPool, value::Value},
+    storage::{
+        disk_manager::DiskManager,
+        error::DatabaseError,
+        operations,
+        transaction::{Transaction, TransactionManager},
+        wal::WriteAheadLog,
+    },
+};
 
 pub struct Database {
     buffer_pool: BufferPool,
@@ -33,7 +36,7 @@ impl Database {
             // Create and initialize root page for index if this is a new database
             let page_id = buffer_pool.new_page()?.header.page_id;
             let btree = BTree::new(page_id);
-            // Initialize the B-tree with an empty root node
+            // Initialize the B-tree with an empty root nodes
             btree.init(&mut buffer_pool)?;
             page_id
         } else {

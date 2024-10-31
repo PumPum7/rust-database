@@ -1,5 +1,5 @@
 use super::error::Result;
-use crate::storage::{LogRecord, WriteAheadLog};
+use crate::storage::wal::{LogRecord, WriteAheadLog};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 

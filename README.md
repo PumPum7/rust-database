@@ -31,8 +31,15 @@ Once connected to the database, you can use the following commands:
 - `SET <key> <value>`: Set a key-value pair (also supports operations like +, -, ...)
 - `UPDATE <key> <value>`: Update an existing key-value pair
 - `DEL <key>`: Delete a key-value pair
-- `EXIT`: Quit the client
-- `HELP`: Display available commands
+- `STRLEN <key>`: Get the length of the value associated with the given key
+- `STRCAT <key> <key2>`: Concatenate the values of two keys and store the result in a third key
+- `SUBSTR <key> <start> <end>`: Get a substring of the value associated with the given key
+- `exit`: Quit the client
+- `help`: Display available commands
+
+### Expression Examples:
+- `EXPR(GET 1 + GET 2)`: Retrieve the value associated with key 1 and key 2, then add them together.
+- `EXPR(GET 1 * 2)`: Retrieve the value associated with key 1 and multiply it by 2.
 
 Use TAB for command completion in the client interface.
 

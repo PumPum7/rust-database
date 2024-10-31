@@ -1,0 +1,9 @@
+[package]
+name = "database-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+database = { path = "../backend" }
+rustyline = "14.0.0"
+rustyline-derive = "0.10.0"

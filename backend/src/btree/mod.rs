@@ -1,13 +1,10 @@
-mod tests;
-
 use std::sync::Arc;
 use std::sync::RwLock;
 
 use crate::storage::buffer_pool::BufferPool;
-use crate::storage::error::DatabaseError;
-use crate::storage::error::Result;
+use crate::storage::error::{DatabaseError, Result};
+use crate::storage::page::Page;
 use crate::storage::value::Value;
-use crate::storage::Page;
 
 const ORDER: usize = 4; // Maximum number of children per node
 const MAX_KEYS: usize = ORDER - 1;
@@ -198,11 +195,18 @@ impl BTree {
             let page = buffer_pool.get_page(current_page_id)?;
             let node = BTreeNode::deserialize(&page.data)?;
 
-            match node.search(key)? {
-                Some(value) if node.is_leaf => return Ok(Some(value)),
-                None if !node.is_leaf => {
-                    let idx = node.entries.partition_point(|entry| entry.key <= key);
-                    current_page_id = node.children[idx];
+            // First check if key exists in current node
+            let idx = node.entries.binary_search_by_key(&key, |entry| entry.key);
+
+            match idx {
+                Ok(i) => return Ok(Some(node.entries[i].value.clone())),
+                Err(i) if !node.is_leaf => {
+                    // Key not found in current node, traverse to appropriate child
+                    if i < node.children.len() {
+                        current_page_id = node.children[i];
+                    } else {
+                        return Ok(None);
+                    }
                 }
                 _ => return Ok(None),
             }
@@ -274,7 +278,12 @@ impl BTree {
             buffer_pool.write_page(node.page_id, page)?;
         } else {
             // Find child to insert into
-            let mut child_idx = node.entries.partition_point(|entry| entry.key <= key);
+            let child_idx = node.entries.partition_point(|entry| entry.key <= key);
+
+            // Ensure child_idx is valid
+            if child_idx >= node.children.len() {
+                return Err(DatabaseError::InvalidData("Invalid child index".to_string()).into());
+            }
 
             let child_page_id = node.children[child_idx];
             let child_page = buffer_pool.get_page(child_page_id)?;
@@ -289,13 +298,18 @@ impl BTree {
                 let node = BTreeNode::deserialize(&page.data)?;
 
                 // Determine which child to follow
-                if key > node.entries[child_idx].key {
-                    child_idx += 1;
-                }
-            }
+                let new_child_idx = if key > node.entries[child_idx].key {
+                    child_idx + 1
+                } else {
+                    child_idx
+                };
 
-            // Recursively insert into child
-            self.insert_non_full(node.children[child_idx], key, value, buffer_pool)?;
+                // Recursively insert into child
+                self.insert_non_full(node.children[new_child_idx], key, value, buffer_pool)?;
+            } else {
+                // Recursively insert into child
+                self.insert_non_full(child_page_id, key, value, buffer_pool)?;
+            }
         }
         Ok(())
     }

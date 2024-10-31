@@ -1,9 +1,11 @@
 use std::sync::{Arc, Mutex};
 
-use super::{LogRecord, Transaction, Value};
-use crate::index::BTree;
-use crate::storage::BufferPool;
-use crate::DatabaseError;
+use crate::btree::BTree;
+use crate::storage::error::DatabaseError;
+use crate::storage::{buffer_pool::BufferPool, value::Value};
+
+use super::transaction::Transaction;
+use super::wal::LogRecord;
 
 pub fn insert(
     txn: &mut Transaction,
