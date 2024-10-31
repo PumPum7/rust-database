@@ -1,7 +1,7 @@
-use crate::command::Command;
-use crate::database::Database;
-use crate::storage::value::Value;
 use std::sync::{Arc, Mutex};
+use crate::command::Command;
+use crate::database_handler::database_handler::Database;
+use crate::storage::value::Value;
 
 const VALID_EXPRESSION_METHODS: &str = "-+*/%";
 

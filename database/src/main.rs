@@ -1,4 +1,4 @@
-use database::database::Database;
+use database::database_handler::database_handler::Database;
 use server::Server;
 use std::error::Error;
 

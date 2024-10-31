@@ -2,7 +2,7 @@
 mod tests {
     use std::fs;
 
-    use crate::database::Database;
+    use crate::database_handler::database_handler::Database;
     use crate::storage::value::Value;
 
     #[test]

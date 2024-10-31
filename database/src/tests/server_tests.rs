@@ -4,7 +4,7 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use crate::database::Database;
+    use crate::database_handler::database_handler::Database;
     use crate::protocol::connection::Connection;
     use crate::server::Server;
 

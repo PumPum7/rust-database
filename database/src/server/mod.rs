@@ -4,7 +4,7 @@ use threadpool::ThreadPool;
 
 use crate::command::Command;
 use crate::{
-    database::Database, protocol::connection::Connection, protocol::error::ProtocolError,
+    database_handler::database_handler::Database, protocol::connection::Connection, protocol::error::ProtocolError,
     protocol::response::Response,
 };
 
