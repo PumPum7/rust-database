@@ -1,12 +1,16 @@
+use crate::command::Command;
+use crate::database::Database;
+use crate::storage::value::Value;
 use std::sync::{Arc, Mutex};
-
-use database::{protocol::Command, Database, Value};
 
 const VALID_EXPRESSION_METHODS: &str = "-+*/%";
 
-pub fn evaluate_expression(expr: &str, db: &mut Arc<Mutex<Database>>) -> Result<Value, Box<dyn std::error::Error>> {
+pub fn evaluate_expression(
+    expr: &str,
+    db: &mut Arc<Mutex<Database>>,
+) -> Result<Value, Box<dyn std::error::Error>> {
     // check if expr contains any of the valid expression methods in the string
-    
+
     for method in VALID_EXPRESSION_METHODS.chars() {
         if expr.contains(method) {
             let parts: Vec<&str> = expr.split(method).collect();
@@ -24,11 +28,20 @@ pub fn evaluate_expression(expr: &str, db: &mut Arc<Mutex<Database>>) -> Result<
     if expr.starts_with("GET") {
         let mut db = db.lock().unwrap();
         let key = expr[4..].trim().parse::<i32>()?;
-        return Ok(db.get(key).unwrap_or(Some(Value::Integer(0))).expect("Error getting value"));
+        return Ok(db
+            .get(key)
+            .unwrap_or(Some(Value::Integer(0)))
+            .expect("Error getting value"));
     } else if expr.starts_with("STRLEN") {
         let mut db = db.lock().unwrap();
         let key = expr[6..].trim().parse::<i32>()?;
-        return Ok(Value::Integer(db.get(key).unwrap_or(Some(Value::String("".to_string()))).expect("Error getting value").to_string().len() as i64));
+        return Ok(Value::Integer(
+            db.get(key)
+                .unwrap_or(Some(Value::String("".to_string())))
+                .expect("Error getting value")
+                .to_string()
+                .len() as i64,
+        ));
     }
 
     // if no valid expression methods are found, parse the expression as a literal
@@ -63,7 +76,10 @@ pub fn parse_value(s: &str) -> Result<Value, Box<dyn std::error::Error>> {
     }
 }
 
-pub fn parse_raw_command(raw_command: &str, db: &mut Arc<Mutex<Database>>) -> Result<Command, Box<dyn std::error::Error>> {
+pub fn parse_raw_command(
+    raw_command: &str,
+    db: &mut Arc<Mutex<Database>>,
+) -> Result<Command, Box<dyn std::error::Error>> {
     let parts: Vec<&str> = raw_command.trim().split_whitespace().collect();
     if parts.is_empty() {
         return Err("Empty command".into());
@@ -164,7 +180,11 @@ pub fn parse_raw_command(raw_command: &str, db: &mut Arc<Mutex<Database>>) -> Re
     }
 }
 
-fn handle_expression(left: &Value, right: &Value, method: char) -> Result<Value, Box<dyn std::error::Error>> {
+fn handle_expression(
+    left: &Value,
+    right: &Value,
+    method: char,
+) -> Result<Value, Box<dyn std::error::Error>> {
     match method {
         '+' => Ok(left.add(right)?),
         '-' => Ok(left.sub(right)?),

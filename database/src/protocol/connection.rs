@@ -1,8 +1,6 @@
-use std::io::{ErrorKind, Write, Read};
-use crate::protocol::Response;
+use crate::protocol::{error::ProtocolError, response::Response};
+use std::io::{ErrorKind, Read, Write};
 use std::net::TcpStream;
-
-use super::ProtocolError;
 
 pub struct Connection {
     stream: TcpStream,
@@ -33,7 +31,7 @@ impl Connection {
     pub fn receive_response(&mut self) -> Result<Response, ProtocolError> {
         let mut type_buffer = [0u8; 1];
         match self.stream.read_exact(&mut type_buffer) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
                 return Err(ProtocolError::ConnectionClosed);
             }
@@ -44,7 +42,8 @@ impl Connection {
         self.stream.read_exact(&mut length_buffer)?;
         let length = u32::from_le_bytes(length_buffer);
 
-        if length > 1024 * 1024 { // 1MB limit for safety
+        if length > 1024 * 1024 {
+            // 1MB limit for safety
             return Err(ProtocolError::InvalidFrame("Response too large".into()));
         }
 
@@ -70,7 +69,7 @@ impl Connection {
     pub fn receive_raw_command(&mut self) -> Result<String, ProtocolError> {
         let mut type_buffer = [0u8; 1];
         match self.stream.read_exact(&mut type_buffer) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
                 return Err(ProtocolError::ConnectionClosed);
             }
@@ -81,14 +80,14 @@ impl Connection {
         self.stream.read_exact(&mut length_buffer)?;
         let length = u32::from_le_bytes(length_buffer);
 
-        if length > 1024 * 1024 { // 1MB limit for safety
+        if length > 1024 * 1024 {
+            // 1MB limit for safety
             return Err(ProtocolError::InvalidFrame("Command too large".into()));
         }
 
         let mut payload = vec![0u8; length as usize];
         self.stream.read_exact(&mut payload)?;
 
-        String::from_utf8(payload)
-            .map_err(|e| ProtocolError::DeserializationError(e.to_string()))
+        String::from_utf8(payload).map_err(|e| ProtocolError::DeserializationError(e.to_string()))
     }
 }

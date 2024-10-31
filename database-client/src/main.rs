@@ -1,5 +1,5 @@
-use database::protocol::ProtocolError;
-use database::protocol::{connection::Connection, Response};
+use database::protocol::error::ProtocolError;
+use database::protocol::{connection::Connection, response::Response};
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};

@@ -1,12 +1,14 @@
-use database::protocol::ProtocolError;
-use database::{protocol, Database};
-use protocol::{connection::Connection, Command, Response};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex, MutexGuard};
 use threadpool::ThreadPool;
 
-mod parser;
-mod tests;
+use crate::command::Command;
+use crate::{
+    database::Database, protocol::connection::Connection, protocol::error::ProtocolError,
+    protocol::response::Response,
+};
+
+pub mod parser;
 
 pub struct Server {
     db: Arc<Mutex<Database>>,
@@ -45,10 +47,9 @@ fn handle_client(
     mut db: Arc<Mutex<Database>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut conn = Connection::new(stream);
-
     loop {
         let raw_command = match conn.receive_raw_command() {
-            Ok(cmd) => cmd,
+            Ok(cmd) => cmd.to_string(),
             Err(ProtocolError::ConnectionClosed) => {
                 println!("Client disconnected");
                 return Ok(());
@@ -90,7 +91,6 @@ fn handle_command(
     command: Command,
     db: &Arc<Mutex<Database>>,
 ) -> Result<Response, Box<dyn std::error::Error>> {
-
     match command {
         Command::Get { key } => {
             let mut db = lock_db(&db)?;

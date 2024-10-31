@@ -1,12 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use database::protocol::connection::Connection;
-    use database::{storage::Value, Database};
-    
     use std::net::TcpStream;
     use std::thread;
     use std::time::Duration;
 
+    use crate::database::Database;
+    use crate::protocol::connection::Connection;
     use crate::server::Server;
 
     fn setup_test_server(test_type: &str) -> u16 {
@@ -22,10 +21,19 @@ mod tests {
         port
     }
 
+    #[test]
+    fn test_server_startup() {
+        let port = setup_test_server("test_server.db");
+        assert!(std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok());
+        std::fs::remove_file("test_server.db").unwrap();
+    }
+
     fn send_raw_command(stream: &TcpStream, command: &str) -> String {
         let mut conn = Connection::new(stream.try_clone().unwrap());
         conn.send_raw_command(command).unwrap();
-        format!("{:?}\n", conn.receive_response().unwrap()).replace("Value(Some(", "").replace("))", "")
+        format!("{:?}\n", conn.receive_response().unwrap())
+            .replace("Value(Some(", "")
+            .replace("))", "")
     }
 
     #[test]
@@ -46,19 +54,20 @@ mod tests {
         assert_eq!(send_raw_command(&stream, "GET 4"), "Boolean(true)\n");
 
         assert_eq!(send_raw_command(&stream, "SET 5 null"), "Ok\n");
-        assert_eq!(send_raw_command(&stream, "GET 5"), "Null\n", "Testing null value");
+        assert_eq!(
+            send_raw_command(&stream, "GET 5"),
+            "Null\n",
+            "Testing null value"
+        );
 
         assert_eq!(send_raw_command(&stream, "DEL 1"), "Ok\n");
-        assert_eq!(send_raw_command(&stream, "GET 1"), "Value(None)\n", "Testing deletion");
+        assert_eq!(
+            send_raw_command(&stream, "GET 1"),
+            "Value(None)\n",
+            "Testing deletion"
+        );
 
         // Cleanup
         std::fs::remove_file("test_basic_operations.db").unwrap();
-    }
-
-    #[test]
-    fn test_value_operations() {
-        let a = Value::Integer(42);
-        let b = Value::Float(3.14);
-        assert_eq!(a.add(&b).unwrap(), Value::Float(45.14));
     }
 }

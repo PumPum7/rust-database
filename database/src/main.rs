@@ -1,8 +1,8 @@
-use database::Database;
+use database::database::Database;
+use server::Server;
 use std::error::Error;
 
 mod server;
-use server::Server;
 
 fn print_header() {
     println!(

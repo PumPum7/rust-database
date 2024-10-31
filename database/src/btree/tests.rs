@@ -1,8 +1,10 @@
 #[cfg(test)]
 mod tests {
+    use crate::btree::BTree;
+    use crate::storage::buffer_pool::BufferPool;
+    use crate::storage::disk_manager::DiskManager;
     use crate::storage::error::Result;
-    use crate::storage::DiskManager;
-    use crate::{BTree, BufferPool, Value};
+    use crate::storage::value::Value;
 
     #[test]
     fn test_btree_operations() -> Result<()> {
@@ -95,6 +97,40 @@ mod tests {
 
         // Delete the file again
         std::fs::remove_file("test_btree_update.db")?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_big_btree() -> Result<()> {
+        let disk_manager = DiskManager::new("test_big_btree.db")?;
+        let mut buffer_pool = BufferPool::new(1000, disk_manager);
+        let root_page_id = buffer_pool.new_page()?.header.page_id;
+        let mut btree = BTree::new(root_page_id);
+
+        btree.init(&mut buffer_pool)?;
+
+        for i in 0..1000 {
+            btree.insert(i, Value::Integer(i as i64), &mut buffer_pool)?;
+        }
+
+        for i in 0..1000 {
+            assert_eq!(
+                btree.search(i, &mut buffer_pool)?,
+                Some(Value::Integer(i as i64)),
+                "Testing search with value {}",
+                i
+            );
+        }
+
+        for i in 0..1000 {
+            btree.delete(i, &mut buffer_pool)?;
+        }
+
+        assert!(
+            btree.search(0, &mut buffer_pool)?.is_none(),
+            "Testing deletion"
+        );
 
         Ok(())
     }

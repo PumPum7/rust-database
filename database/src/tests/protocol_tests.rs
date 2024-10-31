@@ -1,8 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::protocol::connection::Connection;
-    use crate::protocol::Response;
-
+    use crate::protocol::{connection::Connection, response::Response};
     use std::net::{TcpListener, TcpStream};
     use std::thread;
 
@@ -14,17 +12,17 @@ mod tests {
         let handle = thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
             let mut conn = Connection::new(stream);
-            
+
             let cmd = conn.receive_raw_command().unwrap();
-            assert_eq!(cmd, "SET 1 GET 2 + 3");
-            
+            assert_eq!(cmd, "SET 1 EXPR(GET 2 + 3)");
+
             conn.send_response(Response::Ok).unwrap();
         });
 
         let stream = TcpStream::connect(addr).unwrap();
         let mut conn = Connection::new(stream);
-        
-        conn.send_raw_command("SET 1 GET 2 + 3").unwrap();
+
+        conn.send_raw_command("SET 1 EXPR(GET 2 + 3)").unwrap();
         let response = conn.receive_response().unwrap();
         assert!(matches!(response, Response::Ok));
 

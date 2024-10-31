@@ -119,12 +119,19 @@ dependencies = [
  "crc32fast",
  "env_logger",
  "log",
- "rustyline",
- "rustyline-derive",
  "serde",
  "tempfile",
  "thiserror",
  "threadpool",
+]
+
+[[package]]
+name = "database-client"
+version = "0.1.0"
+dependencies = [
+ "database",
+ "rustyline",
+ "rustyline-derive",
 ]
 
 [[package]]
