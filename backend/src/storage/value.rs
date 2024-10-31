@@ -1,11 +1,17 @@
 use serde::{Deserialize, Serialize};
 
+/// Represents a database value that can be stored and manipulated
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Value {
+    /// 64-bit signed integer
     Integer(i64),
+    /// 64-bit floating point number
     Float(f64),
+    /// UTF-8 encoded string
     String(String),
+    /// Boolean value
     Boolean(bool),
+    /// Null value
     Null,
 }
 

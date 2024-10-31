@@ -1,5 +1,3 @@
-mod tests;
-
 use std::sync::Arc;
 use std::sync::RwLock;
 

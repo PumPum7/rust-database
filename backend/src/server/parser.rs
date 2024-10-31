@@ -1,7 +1,7 @@
+use crate::{
+    command::Command, database_handler::database_handler::Database, storage::value::Value,
+};
 use std::sync::{Arc, Mutex};
-use crate::command::Command;
-use crate::database_handler::database_handler::Database;
-use crate::storage::value::Value;
 
 const VALID_EXPRESSION_METHODS: &str = "-+*/%";
 
@@ -20,19 +20,23 @@ pub fn evaluate_expression(
                 handle_expression(&left, &right, method)
             } else {
                 Err(format!("Invalid expression format: {}", expr).into())
-            }
+            };
         }
     }
 
     if expr.starts_with("GET") {
-        let mut db = db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+        let mut db = db
+            .lock()
+            .map_err(|e| format!("Database lock error: {}", e))?;
         let key = expr[4..].trim().parse::<i32>()?;
         return Ok(db
             .get(key)
             .unwrap_or(Some(Value::Integer(0)))
             .expect("Error getting value"));
     } else if expr.starts_with("STRLEN") {
-        let mut db = db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+        let mut db = db
+            .lock()
+            .map_err(|e| format!("Database lock error: {}", e))?;
         let key = expr[6..].trim().parse::<i32>()?;
         return Ok(Value::Integer(
             db.get(key)

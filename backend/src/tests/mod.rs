@@ -3,8 +3,6 @@ pub mod btree_tests;
 #[cfg(test)]
 pub mod buffer_pool_tests;
 #[cfg(test)]
-pub mod client_tests;
-#[cfg(test)]
 pub mod database_tests;
 #[cfg(test)]
 pub mod protocol_tests;

@@ -8,7 +8,7 @@ use crate::{
     protocol::response::Response,
 };
 
-pub mod parser;
+mod parser;
 
 pub struct Server {
     db: Arc<Mutex<Database>>,
