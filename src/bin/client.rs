@@ -89,7 +89,7 @@ impl Client {
         }
 
         match self.conn.send_raw_command(input) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(ProtocolError::ConnectionClosed) => {
                 return Err("Connection closed by server".into());
             }
@@ -107,19 +107,16 @@ impl Client {
                         output.push_str(&format!("{}: {:?}\n", key, value));
                     }
                     Ok(output)
-                },
+                }
                 Response::Error(err) => Ok(format!("ERROR: {}\n", err)),
                 Response::Pong => Ok("PONG\n".into()),
                 Response::Size(size) => Ok(format!("{}\n", size)),
             },
-            Err(ProtocolError::ConnectionClosed) => {
-                Err("Connection closed by server".into())
-            },
+            Err(ProtocolError::ConnectionClosed) => Err("Connection closed by server".into()),
             Err(e) => Err(Box::new(e)),
         }
     }
 }
-
 
 fn print_header() {
     println!(
@@ -140,17 +137,18 @@ fn print_help() -> String {
 │ Command                    │ Description                      │
 ├────────────────────────────┼──────────────────────────────────┤
 │ GET <key>                  │ Get value by key                 │
-│ SET <key> <expression>     │ Set key to expression result     │
-│ UPDATE <key> <expression>  │ Update key with expression       │
+│ SET <key> EXPR(<expr>)     │ Set key to expression result     │
+│ UPDATE <key> EXPR(<expr>)  │ Update key with expression       │
 │ DEL <key>                  │ Delete key-value pair            │
 │ ALL                        │ Get all key-value pairs          │
 │ STRLEN <key>               │ Get length of value by key       │
 │ STRCAT <key> <value>       │ Concatenate value to key         │
 │ SUBSTR <key> <start> <len> │ Get substring of value by key    │
+│ EXPR(<expression>)         │ Calculate expression             │
 │ Expression Examples:       │                                  │
-│ SET 3 GET 1 + GET 2        │ Set 3 to sum of values           │
-│ SET 2 (GET 1 * 2) + 5      │ Set 2 to expression result       │
-│ GET 1 + 3.14               │ Calculate expression             │
+│ EXPR(GET 1 + GET 2)        │ Calculate sum of values          │
+│ SET 3 EXPR(GET 1 * 2)      │ Set using expression             │
+│ EXPR(GET 1 + 3.14)         │ Mix direct values and GET        │
 │ exit                       │ Exit the client                  │
 │ help                       │ Show this help message           │
 └────────────────────────────┴──────────────────────────────────┘"#
@@ -172,6 +170,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "STRLEN".to_string(),
             "STRCAT".to_string(),
             "SUBSTR".to_string(),
+            "EXPR".to_string(),
             "exit".to_string(),
             "help".to_string(),
         ],
