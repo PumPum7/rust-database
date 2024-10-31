@@ -84,7 +84,6 @@ pub fn parse_raw_command(raw_command: &str, db: &mut Arc<Mutex<Database>>) -> Re
             }
 
             let value_part = parts[2..].join(" ");
-            println!("value_part: {}", value_part);
             if value_part.starts_with("EXPR(") && value_part.ends_with(")") {
                 let expr = value_part[5..value_part.len() - 1].trim();
                 let result = evaluate_expression(expr, db)?;
