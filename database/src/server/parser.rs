@@ -9,31 +9,30 @@ pub fn evaluate_expression(
     expr: &str,
     db: &mut Arc<Mutex<Database>>,
 ) -> Result<Value, Box<dyn std::error::Error>> {
-    // check if expr contains any of the valid expression methods in the string
-
     for method in VALID_EXPRESSION_METHODS.chars() {
         if expr.contains(method) {
             let parts: Vec<&str> = expr.split(method).collect();
-            if parts.len() == 2 {
+            return if parts.len() == 2 {
                 let left = evaluate_expression(parts[0].trim(), db)
                     .map_err(|e| format!("Error evaluating left operand: {}", e))?;
                 let right = evaluate_expression(parts[1].trim(), db)
                     .map_err(|e| format!("Error evaluating right operand: {}", e))?;
-                return handle_expression(&left, &right, method);
+                handle_expression(&left, &right, method)
+            } else {
+                Err(format!("Invalid expression format: {}", expr).into())
             }
         }
     }
 
-    // Check if the expression is a command (GET, STRLEN) are valid commands, if they are, return the value
     if expr.starts_with("GET") {
-        let mut db = db.lock().unwrap();
+        let mut db = db.lock().map_err(|e| format!("Database lock error: {}", e))?;
         let key = expr[4..].trim().parse::<i32>()?;
         return Ok(db
             .get(key)
             .unwrap_or(Some(Value::Integer(0)))
             .expect("Error getting value"));
     } else if expr.starts_with("STRLEN") {
-        let mut db = db.lock().unwrap();
+        let mut db = db.lock().map_err(|e| format!("Database lock error: {}", e))?;
         let key = expr[6..].trim().parse::<i32>()?;
         return Ok(Value::Integer(
             db.get(key)
@@ -44,20 +43,7 @@ pub fn evaluate_expression(
         ));
     }
 
-    // if no valid expression methods are found, parse the expression as a literal
-    if let Ok(i) = expr.parse::<i64>() {
-        Ok(Value::Integer(i))
-    } else if let Ok(f) = expr.parse::<f64>() {
-        Ok(Value::Float(f))
-    } else if expr == "true" {
-        Ok(Value::Boolean(true))
-    } else if expr == "false" {
-        Ok(Value::Boolean(false))
-    } else if expr == "null" {
-        Ok(Value::Null)
-    } else {
-        Ok(Value::String(expr.to_string()))
-    }
+    parse_value(expr)
 }
 
 pub fn parse_value(s: &str) -> Result<Value, Box<dyn std::error::Error>> {

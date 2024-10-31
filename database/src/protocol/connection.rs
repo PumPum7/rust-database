@@ -50,7 +50,7 @@ impl Connection {
         let mut payload = vec![0u8; length as usize];
         self.stream.read_exact(&mut payload)?;
 
-        let response: Response = bincode::deserialize(&payload).unwrap();
+        let response: Response = bincode::deserialize(&payload)?;
         Ok(response)
     }
 
