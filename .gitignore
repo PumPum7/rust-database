@@ -2,3 +2,4 @@
 *.db
 /.idea
 *.wal
+.DS_Store
