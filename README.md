@@ -11,10 +11,8 @@ This project implements a simple database system with a client-server architectu
 
 ## Project Structure
 
-- `src/bin/client.rs`: Implementation of the database client
-- `src/query/parser.rs`: SQL parser (to be implemented)
-- `src/server/lib.rs`: Server-side logic and storage management
-- `src/index/mod.rs`: B-tree index implementation
+- `backend/`: Contains the database server implementation
+- `client/`: Contains the client implementation
 
 ## Getting Started
 
