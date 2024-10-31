@@ -8,12 +8,11 @@ pub mod storage;
 #[cfg(test)]
 pub mod tests;
 
+use database_handler::database_handler::Database;
 use server::Server;
 use std::error::Error;
-use database_handler::database_handler::Database;
 
-use log::{debug, error, info, warn};
-
+use log::{error, info};
 
 fn print_header() {
     println!(

@@ -4,8 +4,8 @@ use threadpool::ThreadPool;
 
 use crate::command::Command;
 use crate::{
-    database_handler::database_handler::Database, protocol::connection::Connection, protocol::error::ProtocolError,
-    protocol::response::Response,
+    database_handler::database_handler::Database, protocol::connection::Connection,
+    protocol::error::ProtocolError, protocol::response::Response,
 };
 
 mod parser;
