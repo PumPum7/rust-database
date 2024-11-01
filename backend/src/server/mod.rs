@@ -136,5 +136,8 @@ fn handle_command(
 }
 
 fn lock_db(db: &Arc<Mutex<Database>>) -> Result<MutexGuard<Database>, Box<dyn std::error::Error>> {
-    Ok(db.lock().unwrap())
+    db.lock().map_err(|e| Box::new(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        format!("Failed to acquire database lock: {}", e)
+    )) as Box<dyn std::error::Error>)
 }
