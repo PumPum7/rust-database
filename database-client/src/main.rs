@@ -25,26 +25,58 @@ impl Completer for DbHelper {
         _ctx: &rustyline::Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
         let line_parts: Vec<&str> = line[..pos].split_whitespace().collect();
-
+        
+        // If line is empty or just starting, return all commands
         if line_parts.is_empty() {
             return Ok((0, self.commands.clone()));
         }
 
-        let current = line_parts[0].to_uppercase();
-        let matches: Vec<String> = self
-            .commands
-            .iter()
-            .filter(|cmd| cmd.starts_with(&current))
-            .cloned()
-            .collect();
+        let current_word = line_parts.last().unwrap().to_uppercase();
+        let start_pos = line[..pos].rfind(' ').map(|p| p + 1).unwrap_or(0);
 
-        Ok((0, matches))
+        // If we're on the first word, filter commands
+        if line_parts.len() == 1 {
+            let matches: Vec<String> = self
+                .commands
+                .iter()
+                .filter(|cmd| cmd.starts_with(&current_word))
+                .cloned()
+                .collect();
+            return Ok((start_pos, matches));
+        }
+
+        // Suggest EXPR for SET/UPDATE commands
+        let first_word = line_parts[0].to_uppercase();
+        if (first_word == "SET" || first_word == "UPDATE") && line_parts.len() == 3 {
+            if "EXPR(".starts_with(&current_word) {
+                return Ok((start_pos, vec!["EXPR(".to_string()]));
+            }
+        }
+
+        Ok((pos, vec![]))
     }
 }
 
 impl Highlighter for DbHelper {
-    fn highlight<'l>(&self, line: &'l str, _pos: usize) -> std::borrow::Cow<'l, str> {
-        self.highlighter.highlight(line, _pos)
+    fn highlight<'l>(&self, line: &'l str, pos: usize) -> std::borrow::Cow<'l, str> {
+        use std::borrow::Cow;
+
+        let line_upper = line.to_uppercase();
+        
+        // Highlight commands
+        for cmd in &self.commands {
+            if line_upper.starts_with(cmd) {
+                return Cow::Owned(format!("\x1b[1;32m{}\x1b[0m{}", &line[..cmd.len()], &line[cmd.len()..]));
+            }
+        }
+
+        // Highlight EXPR
+        if line_upper.contains("EXPR(") {
+            return Cow::Owned(format!("\x1b[1;36m{}\x1b[0m", line));
+        }
+
+        // Default to bracket highlighting
+        self.highlighter.highlight(line, pos)
     }
 
     fn highlight_char(&self, line: &str, pos: usize, force_update: bool) -> bool {
