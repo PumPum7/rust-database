@@ -12,7 +12,7 @@ This project implements a simple database system with a client-server architectu
 ## Project Structure
 
 - `backend/`: Contains the database server implementation
-- `client/`: Contains the client implementation
+- `database-client/`: Contains the client implementation
 
 ## Getting Started
 
