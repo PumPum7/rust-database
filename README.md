@@ -7,7 +7,7 @@ A Rust-based database system with ACID transaction support, MVCC, and a client-s
 - **ACID Transactions**: Full transaction support with BEGIN, COMMIT, and ROLLBACK
 - **Isolation Levels**: Read Committed and Repeatable Read isolation
 - **MVCC**: Multi-Version Concurrency Control for snapshot isolation
-- **Write-Ahead Logging**: Durability through WAL with crash recovery
+- **Write-Ahead Logging**: ARIES-style WAL with checkpoints, compensation log records (CLRs), and 3-phase crash recovery (Analysis, Redo, Undo)
 - **B-Tree Index**: Efficient key-value storage and retrieval
 - **TCP Protocol**: Binary protocol for client-server communication
 - **Interactive CLI**: Command-line client with tab completion
