@@ -7,3 +7,5 @@ pub mod slotted_page;
 pub mod transaction;
 pub mod value;
 pub mod wal;
+
+pub use transaction::TransactionId;

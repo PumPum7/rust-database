@@ -6,6 +6,24 @@ use std::sync::{Arc, Mutex};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TransactionId(pub u64);
 
+impl From<u64> for TransactionId {
+    fn from(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+impl From<TransactionId> for u64 {
+    fn from(value: TransactionId) -> Self {
+        value.0
+    }
+}
+
+impl std::fmt::Display for TransactionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VersionId {
     xmin: TransactionId, // Transaction that created this version
@@ -27,6 +45,7 @@ impl VersionId {
     }
 }
 
+#[derive(Clone)]
 pub struct Transaction {
     pub id: TransactionId,
     pub is_active: bool,

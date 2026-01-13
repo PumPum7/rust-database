@@ -9,6 +9,8 @@ pub mod protocol_tests;
 #[cfg(test)]
 pub mod server_tests;
 #[cfg(test)]
+pub mod transaction_tests;
+#[cfg(test)]
 pub mod value_tests;
 #[cfg(test)]
 pub mod wal_tests;

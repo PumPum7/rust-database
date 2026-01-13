@@ -25,7 +25,7 @@ impl Completer for DbHelper {
         _ctx: &rustyline::Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
         let line_parts: Vec<&str> = line[..pos].split_whitespace().collect();
-        
+
         // If line is empty or just starting, return all commands
         if line_parts.is_empty() {
             return Ok((0, self.commands.clone()));
@@ -62,11 +62,15 @@ impl Highlighter for DbHelper {
         use std::borrow::Cow;
 
         let line_upper = line.to_uppercase();
-        
+
         // Highlight commands
         for cmd in &self.commands {
             if line_upper.starts_with(cmd) {
-                return Cow::Owned(format!("\x1b[1;32m{}\x1b[0m{}", &line[..cmd.len()], &line[cmd.len()..]));
+                return Cow::Owned(format!(
+                    "\x1b[1;32m{}\x1b[0m{}",
+                    &line[..cmd.len()],
+                    &line[cmd.len()..]
+                ));
             }
         }
 

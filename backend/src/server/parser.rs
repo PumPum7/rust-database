@@ -75,7 +75,26 @@ pub fn parse_raw_command(
         return Err("Empty command".into());
     }
 
+    let get_txn_id = |parts: &[&str]| -> Option<u64> {
+        parts
+            .iter()
+            .position(|p| p.to_uppercase() == "TXN")
+            .and_then(|idx| parts.get(idx + 1).and_then(|id| id.parse().ok()))
+    };
+
     match parts[0].to_uppercase().as_str() {
+        "BEGIN" => {
+            let isolation = parts.get(1).unwrap_or(&"read_committed").to_lowercase();
+            Ok(Command::Begin { isolation })
+        }
+        "COMMIT" => {
+            let txn_id = get_txn_id(&parts);
+            Ok(Command::Commit { txn_id })
+        }
+        "ROLLBACK" => {
+            let txn_id = get_txn_id(&parts);
+            Ok(Command::Rollback { txn_id })
+        }
         "GET" => {
             if parts.len() != 2 {
                 return Err("Usage: GET <key>".into());
@@ -86,10 +105,20 @@ pub fn parse_raw_command(
         }
         "SET" => {
             if parts.len() < 3 {
-                return Err("Usage: SET <key> <value>".into());
+                return Err("Usage: SET <key> <value> [TXN <id>]".into());
             }
 
-            let value_part = parts[2..].join(" ");
+            let txn_id = get_txn_id(&parts);
+            let value_part = if txn_id.is_some() {
+                let idx = parts
+                    .iter()
+                    .position(|p| p.to_uppercase() == "TXN")
+                    .unwrap();
+                parts[2..idx].join(" ")
+            } else {
+                parts[2..].join(" ")
+            };
+
             if value_part.starts_with("EXPR(") && value_part.ends_with(")") {
                 let expr = value_part[5..value_part.len() - 1].trim();
                 let result = evaluate_expression(expr, db)?;
@@ -97,11 +126,13 @@ pub fn parse_raw_command(
                 return Ok(Command::Set {
                     key: parts[1].parse()?,
                     value: result,
+                    txn_id,
                 });
             }
             Ok(Command::Set {
                 key: parts[1].parse()?,
                 value: parse_value(&value_part)?,
+                txn_id,
             })
         }
         "EXPR" => {
@@ -113,29 +144,44 @@ pub fn parse_raw_command(
         }
         "UPDATE" => {
             if parts.len() < 3 {
-                return Err("Usage: UPDATE <key> <value>".into());
+                return Err("Usage: UPDATE <key> <value> [TXN <id>]".into());
             }
-            let value_part = parts[2..].join(" ");
+
+            let txn_id = get_txn_id(&parts);
+            let value_part = if txn_id.is_some() {
+                let idx = parts
+                    .iter()
+                    .position(|p| p.to_uppercase() == "TXN")
+                    .unwrap();
+                parts[2..idx].join(" ")
+            } else {
+                parts[2..].join(" ")
+            };
+
             if value_part.starts_with("EXPR(") && value_part.ends_with(")") {
                 let expr = value_part[5..value_part.len() - 1].trim();
                 let result = evaluate_expression(expr, db)?;
                 return Ok(Command::Update {
                     key: parts[1].parse()?,
                     value: result,
+                    txn_id,
                 });
             }
 
             Ok(Command::Update {
                 key: parts[1].parse()?,
-                value: parse_value(&parts[2..].join(" "))?,
+                value: parse_value(&value_part)?,
+                txn_id,
             })
         }
         "DEL" => {
             if parts.len() != 2 {
-                return Err("Usage: DEL <key>".into());
+                return Err("Usage: DEL <key> [TXN <id>]".into());
             }
+            let txn_id = get_txn_id(&parts);
             Ok(Command::Delete {
                 key: parts[1].parse()?,
+                txn_id,
             })
         }
         "ALL" => Ok(Command::All),
@@ -149,21 +195,37 @@ pub fn parse_raw_command(
         }
         "STRCAT" => {
             if parts.len() < 3 {
-                return Err("Usage: STRCAT <key> <value>".into());
+                return Err("Usage: STRCAT <key> <value> [TXN <id>]".into());
             }
+
+            let txn_id = get_txn_id(&parts);
+            let value_part = if txn_id.is_some() {
+                let idx = parts
+                    .iter()
+                    .position(|p| p.to_uppercase() == "TXN")
+                    .unwrap();
+                parts[2..idx].join(" ")
+            } else {
+                parts[2..].join(" ")
+            };
+
             Ok(Command::Strcat {
                 key: parts[1].parse()?,
-                value: parse_value(&parts[2..].join(" "))?,
+                value: parse_value(&value_part)?,
+                txn_id,
             })
         }
         "SUBSTR" => {
             if parts.len() != 4 {
-                return Err("Usage: SUBSTR <key> <start> <length>".into());
+                return Err("Usage: SUBSTR <key> <start> <length> [TXN <id>]".into());
             }
+
+            let txn_id = get_txn_id(&parts);
             Ok(Command::Substr {
                 key: parts[1].parse()?,
                 start: parts[2].parse()?,
                 length: parts[3].parse()?,
+                txn_id,
             })
         }
         _ => Err("Unknown command".into()),
