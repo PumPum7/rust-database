@@ -1,12 +1,13 @@
 use super::error::{DatabaseError, Result};
 
 pub const PAGE_SIZE: usize = 4096; // Standard page size (4KB)
-const PAGE_HEADER_SIZE: usize = 8; // 4 bytes for page_id, 4 bytes for record count
+const PAGE_HEADER_SIZE: usize = 16; // 4 bytes for page_id, 4 bytes for record count, 8 bytes for LSN
 
 #[derive(Debug)]
 pub struct PageHeader {
     pub page_id: u32,
     pub record_count: u32,
+    pub page_lsn: u64,
 }
 
 impl PageHeader {
@@ -14,6 +15,7 @@ impl PageHeader {
         Self {
             page_id,
             record_count: 0,
+            page_lsn: 0,
         }
     }
 
@@ -24,6 +26,7 @@ impl PageHeader {
         Ok(Self {
             page_id: u32::from_le_bytes(buffer[0..4].try_into().unwrap()),
             record_count: u32::from_le_bytes(buffer[4..8].try_into().unwrap()),
+            page_lsn: u64::from_le_bytes(buffer[8..16].try_into().unwrap()),
         })
     }
 
@@ -31,6 +34,7 @@ impl PageHeader {
         let mut buffer = Vec::with_capacity(PAGE_HEADER_SIZE);
         buffer.extend_from_slice(&self.page_id.to_le_bytes());
         buffer.extend_from_slice(&self.record_count.to_le_bytes());
+        buffer.extend_from_slice(&self.page_lsn.to_le_bytes());
         buffer
     }
 
@@ -38,6 +42,7 @@ impl PageHeader {
         Self {
             page_id: self.page_id,
             record_count: self.record_count,
+            page_lsn: self.page_lsn,
         }
     }
 }
@@ -66,6 +71,15 @@ impl Page {
 
     pub fn mark_dirty(&mut self) {
         self.is_dirty = true;
+    }
+
+    pub fn set_lsn(&mut self, lsn: u64) {
+        self.header.page_lsn = lsn;
+        self.is_dirty = true;
+    }
+
+    pub fn get_lsn(&self) -> u64 {
+        self.header.page_lsn
     }
 
     pub fn pin(&mut self) {

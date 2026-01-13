@@ -16,18 +16,30 @@ pub fn insert(
     value: &Value,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut btree = btree.lock().unwrap();
+    let page_id = btree.root_page_id();
+
+    // Capture before image
+    let before_image = buffer_pool.get_page(page_id)?.data.clone();
 
     let versioned_value = VersionedValue::new(value.clone(), txn.id);
 
     match btree.insert(key, vec![versioned_value], buffer_pool) {
         Ok(()) => {
+            // Capture after image
+            let after_image = buffer_pool.get_page(page_id)?.data.clone();
+
             if let Some(wal) = &txn.wal {
-                wal.lock().unwrap().log(LogRecord::Write {
+                let lsn = wal.lock().unwrap().log(LogRecord::Write {
+                    lsn: 0,
                     txn_id: txn.id.0,
-                    page_id: btree.root_page_id(),
+                    page_id,
                     offset: 0,
-                    data: value.serialize(),
+                    before_image,
+                    after_image,
                 })?;
+
+                // Update page LSN
+                buffer_pool.get_page(page_id)?.set_lsn(lsn);
             }
             Ok(())
         }
@@ -45,6 +57,10 @@ pub fn delete(
     key: i32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut btree = btree.lock().unwrap();
+    let page_id = btree.root_page_id();
+
+    // Capture before image
+    let before_image = buffer_pool.get_page(page_id)?.data.clone();
 
     // Get existing versions
     let existing_versions = btree.search(key, buffer_pool);
@@ -78,13 +94,21 @@ pub fn delete(
 
     match btree.update(key, new_versions, buffer_pool) {
         Ok(()) => {
+            // Capture after image
+            let after_image = buffer_pool.get_page(page_id)?.data.clone();
+
             if let Some(wal) = &txn.wal {
-                wal.lock().unwrap().log(LogRecord::Write {
+                let lsn = wal.lock().unwrap().log(LogRecord::Write {
+                    lsn: 0,
                     txn_id: txn.id.0,
-                    page_id: btree.root_page_id(),
+                    page_id,
                     offset: 0,
-                    data: vec![],
+                    before_image,
+                    after_image,
                 })?;
+
+                // Update page LSN
+                buffer_pool.get_page(page_id)?.set_lsn(lsn);
             }
             Ok(())
         }
@@ -146,6 +170,10 @@ pub fn update(
     value: &Value,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut btree = btree.lock().unwrap();
+    let page_id = btree.root_page_id();
+
+    // Capture before image
+    let before_image = buffer_pool.get_page(page_id)?.data.clone();
 
     // Get existing versions
     let existing_versions = btree.search(key, buffer_pool);
@@ -177,13 +205,21 @@ pub fn update(
 
     match btree.update(key, new_versions, buffer_pool) {
         Ok(()) => {
+            // Capture after image
+            let after_image = buffer_pool.get_page(page_id)?.data.clone();
+
             if let Some(wal) = &txn.wal {
-                wal.lock().unwrap().log(LogRecord::Write {
+                let lsn = wal.lock().unwrap().log(LogRecord::Write {
+                    lsn: 0,
                     txn_id: txn.id.0,
-                    page_id: btree.root_page_id(),
+                    page_id,
                     offset: 0,
-                    data: value.serialize(),
+                    before_image,
+                    after_image,
                 })?;
+
+                // Update page LSN
+                buffer_pool.get_page(page_id)?.set_lsn(lsn);
             }
             Ok(())
         }

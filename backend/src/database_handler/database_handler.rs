@@ -51,11 +51,19 @@ impl Database {
     pub fn new(path: impl AsRef<Path>) -> Result<Self, Box<dyn std::error::Error>> {
         let path = path.as_ref();
         let file_exists = path.exists();
+
+        // Create WAL first (before buffer pool, as buffer pool needs WAL reference)
+        let wal = Arc::new(Mutex::new(
+            WriteAheadLog::new(path.with_extension("wal"))
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?,
+        ));
+
+        // Create disk manager
         let disk_manager = DiskManager::new(path.to_str().unwrap())
-            .map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
-        let mut buffer_pool = BufferPool::new(1000, disk_manager);
-        let mut wal = WriteAheadLog::new(path.with_extension("wal"))
-            .map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
+        // Create buffer pool with WAL reference
+        let mut buffer_pool = BufferPool::new(1000, disk_manager, Arc::clone(&wal));
 
         let root_page_id = if !file_exists {
             let page_id = buffer_pool.new_page()?.header.page_id;
@@ -63,7 +71,8 @@ impl Database {
             btree.init(&mut buffer_pool)?;
             page_id
         } else {
-            wal.recover(&mut buffer_pool)?;
+            // Recover from WAL
+            wal.lock().unwrap().recover(&mut buffer_pool)?;
             let page = buffer_pool.get_page(0)?;
             page.header.page_id
         };
@@ -74,7 +83,7 @@ impl Database {
             buffer_pool,
             transaction_manager: TransactionManager::new(),
             index: Arc::new(Mutex::new(btree)),
-            wal: Arc::new(Mutex::new(wal)),
+            wal,
             active_txns: Arc::new(Mutex::new(HashMap::new())),
         })
     }

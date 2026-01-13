@@ -43,6 +43,18 @@ pub enum DatabaseError {
 
     #[error("Transaction already committed")]
     TransactionAlreadyCommitted,
+
+    #[error("WAL flush failed")]
+    WalFlushFailed,
+
+    #[error("WAL corrupted at LSN {0}")]
+    WalCorrupted(u64),
+
+    #[error("Recovery failed: {0}")]
+    RecoveryFailed(String),
+
+    #[error("Page LSN {page_lsn} exceeds flushed LSN {flushed_lsn}")]
+    PageLsnAhead { page_lsn: u64, flushed_lsn: u64 },
 }
 
 pub type Result<T> = std::result::Result<T, DatabaseError>;

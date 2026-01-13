@@ -95,7 +95,10 @@ impl Transaction {
             return Ok(());
         }
         if let Some(wal) = &self.wal {
-            wal.lock().unwrap().log(LogRecord::Commit(self.id.0))?;
+            wal.lock().unwrap().log(LogRecord::Commit {
+                lsn: 0,
+                txn_id: self.id.0,
+            })?;
         }
         self.is_active = false;
         Ok(())
@@ -106,7 +109,10 @@ impl Transaction {
             return Ok(());
         }
         if let Some(wal) = &self.wal {
-            wal.lock().unwrap().log(LogRecord::Rollback(self.id.0))?;
+            wal.lock().unwrap().log(LogRecord::Rollback {
+                lsn: 0,
+                txn_id: self.id.0,
+            })?;
         }
         self.is_active = false;
         Ok(())
@@ -149,7 +155,10 @@ impl TransactionManager {
     ) -> Result<Transaction> {
         let txn_id = TransactionId(self.next_txn_id.fetch_add(1, Ordering::SeqCst));
 
-        wal.lock().unwrap().log(LogRecord::Begin(txn_id.0))?;
+        wal.lock().unwrap().log(LogRecord::Begin {
+            lsn: 0,
+            txn_id: txn_id.0,
+        })?;
 
         let mut active_txns = self.active_txns.lock().unwrap();
 

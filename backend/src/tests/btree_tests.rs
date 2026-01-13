@@ -6,7 +6,9 @@ mod tests {
     use crate::storage::error::Result;
     use crate::storage::mvcc::VersionedValue;
     use crate::storage::value::Value;
+    use crate::storage::wal::WriteAheadLog;
     use crate::storage::TransactionId;
+    use std::sync::{Arc, Mutex};
 
     fn assert_version_matches(
         versions: &Option<Vec<VersionedValue>>,
@@ -25,7 +27,8 @@ mod tests {
     #[test]
     fn test_btree_operations() -> Result<()> {
         let disk_manager = DiskManager::new("test_btree.db")?;
-        let mut buffer_pool = BufferPool::new(100, disk_manager);
+        let wal = Arc::new(Mutex::new(WriteAheadLog::new("test_btree.wal")?));
+        let mut buffer_pool = BufferPool::new(100, disk_manager, Arc::clone(&wal));
         let root_page_id = buffer_pool.new_page()?.header.page_id;
         let mut btree = BTree::new(root_page_id);
 
@@ -71,6 +74,7 @@ mod tests {
         );
 
         std::fs::remove_file("test_btree.db")?;
+        let _ = std::fs::remove_file("test_btree.wal");
 
         Ok(())
     }
@@ -78,7 +82,8 @@ mod tests {
     #[test]
     fn test_btree_delete() -> Result<()> {
         let disk_manager = DiskManager::new("test_btree_delete.db")?;
-        let mut buffer_pool = BufferPool::new(100, disk_manager);
+        let wal = Arc::new(Mutex::new(WriteAheadLog::new("test_btree_delete.wal")?));
+        let mut buffer_pool = BufferPool::new(100, disk_manager, Arc::clone(&wal));
         let root_page_id = buffer_pool.new_page()?.header.page_id;
         let mut btree = BTree::new(root_page_id);
 
@@ -118,6 +123,7 @@ mod tests {
         );
 
         std::fs::remove_file("test_btree_delete.db")?;
+        let _ = std::fs::remove_file("test_btree_delete.wal");
 
         Ok(())
     }
@@ -125,7 +131,8 @@ mod tests {
     #[test]
     fn test_btree_update() -> Result<()> {
         let disk_manager = DiskManager::new("test_btree_update.db")?;
-        let mut buffer_pool = BufferPool::new(100, disk_manager);
+        let wal = Arc::new(Mutex::new(WriteAheadLog::new("test_btree_update.wal")?));
+        let mut buffer_pool = BufferPool::new(100, disk_manager, Arc::clone(&wal));
         let root_page_id = buffer_pool.new_page()?.header.page_id;
         let mut btree = BTree::new(root_page_id);
 
@@ -160,6 +167,7 @@ mod tests {
         );
 
         std::fs::remove_file("test_btree_update.db")?;
+        let _ = std::fs::remove_file("test_btree_update.wal");
 
         Ok(())
     }
@@ -167,7 +175,8 @@ mod tests {
     #[test]
     fn test_big_btree() -> Result<()> {
         let disk_manager = DiskManager::new("test_big_btree.db")?;
-        let mut buffer_pool = BufferPool::new(1000, disk_manager);
+        let wal = Arc::new(Mutex::new(WriteAheadLog::new("test_big_btree.wal")?));
+        let mut buffer_pool = BufferPool::new(1000, disk_manager, Arc::clone(&wal));
         let root_page_id = buffer_pool.new_page()?.header.page_id;
         let mut btree = BTree::new(root_page_id);
 
@@ -212,6 +221,7 @@ mod tests {
 
         // Cleanup
         std::fs::remove_file("test_big_btree.db")?;
+        let _ = std::fs::remove_file("test_big_btree.wal");
 
         Ok(())
     }
