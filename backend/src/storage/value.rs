@@ -16,6 +16,14 @@ pub enum Value {
 }
 
 impl Value {
+    pub fn is_zero(&self) -> bool {
+        match self {
+            Value::Integer(i) => *i == 0,
+            Value::Float(f) => *f == 0.0,
+            _ => false,
+        }
+    }
+
     pub fn serialize(&self) -> Vec<u8> {
         let mut buffer = Vec::new();
         match self {
@@ -117,6 +125,9 @@ impl Value {
     }
 
     pub fn div(&self, other: &Self) -> Result<Self, Box<dyn std::error::Error>> {
+        if other.is_zero() {
+            return Err("Division by zero".into());
+        }
         match (self, other) {
             (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a / b)),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a / b)),
