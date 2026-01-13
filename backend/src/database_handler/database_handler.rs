@@ -12,7 +12,7 @@ use crate::{
         disk_manager::DiskManager,
         error::DatabaseError,
         operations,
-        transaction::{Transaction, TransactionManager},
+        transaction::{IsolationLevel as TxnIsolationLevel, Transaction, TransactionManager},
         value::Value,
         wal::WriteAheadLog,
     },
@@ -27,6 +27,15 @@ pub enum IsolationLevel {
 impl Default for IsolationLevel {
     fn default() -> Self {
         Self::ReadCommitted
+    }
+}
+
+impl From<IsolationLevel> for TxnIsolationLevel {
+    fn from(level: IsolationLevel) -> Self {
+        match level {
+            IsolationLevel::ReadCommitted => TxnIsolationLevel::ReadCommitted,
+            IsolationLevel::RepeatableRead => TxnIsolationLevel::RepeatableRead,
+        }
     }
 }
 
@@ -72,11 +81,11 @@ impl Database {
 
     pub fn begin_transaction(
         &mut self,
-        _isolation: IsolationLevel,
+        isolation: IsolationLevel,
     ) -> Result<TransactionId, Box<dyn std::error::Error>> {
         let txn = self
             .transaction_manager
-            .begin_transaction(Arc::clone(&self.wal))
+            .begin_transaction_with_isolation(Arc::clone(&self.wal), isolation.into())
             .map_err(|_| DatabaseError::IoError(std::io::Error::last_os_error()))?;
 
         let txn_id = txn.id;
@@ -95,6 +104,7 @@ impl Database {
 
         if let Some(mut txn) = txn_opt {
             txn.commit()?;
+            self.transaction_manager.commit_transaction(txn_id);
             self.flush()?;
             Ok(())
         } else {
@@ -109,6 +119,7 @@ impl Database {
         let mut active_txns = self.active_txns.lock().unwrap();
         if let Some(mut txn) = active_txns.remove(&txn_id.0) {
             txn.rollback()?;
+            self.transaction_manager.abort_transaction(txn_id);
             Ok(())
         } else {
             Err(Box::new(DatabaseError::TransactionNotActive))
@@ -204,15 +215,56 @@ impl Database {
     }
 
     pub fn get(&mut self, key: i32) -> Result<Option<Value>, Box<dyn std::error::Error>> {
-        operations::get(&self.index, &mut self.buffer_pool, key)
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::get(&self.index, &mut self.buffer_pool, key, None, &aborted)
+    }
+
+    pub fn get_in_transaction(
+        &mut self,
+        txn_id: TransactionId,
+        key: i32,
+    ) -> Result<Option<Value>, Box<dyn std::error::Error>> {
+        let txn = self
+            .get_active_transaction(txn_id)
+            .ok_or(DatabaseError::TransactionNotActive)?;
+        let snapshot = txn.get_snapshot();
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::get(&self.index, &mut self.buffer_pool, key, snapshot, &aborted)
     }
 
     pub fn all(&mut self) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
-        operations::all(&self.index, &mut self.buffer_pool)
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::all(&self.index, &mut self.buffer_pool, None, &aborted)
+    }
+
+    pub fn all_in_transaction(
+        &mut self,
+        txn_id: TransactionId,
+    ) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+        let txn = self
+            .get_active_transaction(txn_id)
+            .ok_or(DatabaseError::TransactionNotActive)?;
+        let snapshot = txn.get_snapshot();
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::all(&self.index, &mut self.buffer_pool, snapshot, &aborted)
     }
 
     pub fn strlen(&mut self, key: i32) -> Result<Option<usize>, Box<dyn std::error::Error>> {
-        operations::strlen(&self.index, &mut self.buffer_pool, key)
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::strlen(&self.index, &mut self.buffer_pool, key, None, &aborted)
+    }
+
+    pub fn strlen_in_transaction(
+        &mut self,
+        txn_id: TransactionId,
+        key: i32,
+    ) -> Result<Option<usize>, Box<dyn std::error::Error>> {
+        let txn = self
+            .get_active_transaction(txn_id)
+            .ok_or(DatabaseError::TransactionNotActive)?;
+        let snapshot = txn.get_snapshot();
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::strlen(&self.index, &mut self.buffer_pool, key, snapshot, &aborted)
     }
 
     pub fn strcat(&mut self, key: i32, value: &Value) -> Result<(), Box<dyn std::error::Error>> {
@@ -220,7 +272,15 @@ impl Database {
         let mut txn = self
             .get_active_transaction(txn_id)
             .ok_or(DatabaseError::TransactionNotActive)?;
-        let result = operations::strcat(&mut txn, &self.index, &mut self.buffer_pool, key, value);
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        let result = operations::strcat(
+            &mut txn,
+            &self.index,
+            &mut self.buffer_pool,
+            key,
+            value,
+            &aborted,
+        );
         if result.is_ok() {
             self.commit_transaction(txn_id)?;
         } else {
@@ -238,7 +298,15 @@ impl Database {
         let mut txn = self
             .get_active_transaction(txn_id)
             .ok_or(DatabaseError::TransactionNotActive)?;
-        operations::strcat(&mut txn, &self.index, &mut self.buffer_pool, key, value)?;
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::strcat(
+            &mut txn,
+            &self.index,
+            &mut self.buffer_pool,
+            key,
+            value,
+            &aborted,
+        )?;
         Ok(())
     }
 
@@ -252,6 +320,7 @@ impl Database {
         let mut txn = self
             .get_active_transaction(txn_id)
             .ok_or(DatabaseError::TransactionNotActive)?;
+        let aborted = self.transaction_manager.get_aborted_transactions();
         let result = operations::substr(
             &mut txn,
             &self.index,
@@ -259,6 +328,7 @@ impl Database {
             key,
             start,
             length,
+            &aborted,
         );
         if result.is_ok() {
             self.commit_transaction(txn_id)?;
@@ -278,6 +348,7 @@ impl Database {
         let mut txn = self
             .get_active_transaction(txn_id)
             .ok_or(DatabaseError::TransactionNotActive)?;
+        let aborted = self.transaction_manager.get_aborted_transactions();
         operations::substr(
             &mut txn,
             &self.index,
@@ -285,6 +356,7 @@ impl Database {
             key,
             start,
             length,
+            &aborted,
         )?;
         Ok(())
     }
@@ -300,5 +372,19 @@ impl Database {
         self.flush()?;
         self.wal.lock().unwrap().truncate()?;
         Ok(())
+    }
+
+    pub fn gc(&mut self) -> Result<usize, Box<dyn std::error::Error>> {
+        let active_txns = self.transaction_manager.get_active_transactions();
+        let oldest_active = active_txns
+            .iter()
+            .min()
+            .copied()
+            .unwrap_or(TransactionId(u64::MAX));
+
+        let mut btree = self.index.lock().unwrap();
+        let versions_removed = btree.gc(oldest_active, &mut self.buffer_pool)?;
+
+        Ok(versions_removed)
     }
 }

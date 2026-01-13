@@ -169,25 +169,41 @@ fn print_header() {
 
 fn print_help() -> String {
     r#"Available commands:
-┌────────────────────────────┬──────────────────────────────────┐
-│ Command                    │ Description                      │
-├────────────────────────────┼──────────────────────────────────┤
-│ GET <key>                  │ Get value by key                 │
-│ SET <key> EXPR(<expr>)     │ Set key to expression result     │
-│ UPDATE <key> EXPR(<expr>)  │ Update key with expression       │
-│ DEL <key>                  │ Delete key-value pair            │
-│ ALL                        │ Get all key-value pairs          │
-│ STRLEN <key>               │ Get length of value by key       │
-│ STRCAT <key> <value>       │ Concatenate value to key         │
-│ SUBSTR <key> <start> <len> │ Get substring of value by key    │
-│ EXPR(<expression>)         │ Calculate expression             │
-│ Expression Examples:       │                                  │
-│ EXPR(GET 1 + GET 2)        │ Calculate sum of values          │
-│ SET 3 EXPR(GET 1 * 2)      │ Set using expression             │
-│ EXPR(GET 1 + 3.14)         │ Mix direct values and GET        │
-│ exit                       │ Exit the client                  │
-│ help                       │ Show this help message           │
-└────────────────────────────┴──────────────────────────────────┘"#
+┌─────────────────────────────────┬──────────────────────────────────────────┐
+│ Command                         │ Description                              │
+├─────────────────────────────────┼──────────────────────────────────────────┤
+│ Transaction Commands:           │                                          │
+│ BEGIN [rc|rr]                   │ Start transaction (rc=ReadCommitted,     │
+│                                 │ rr=RepeatableRead)                       │
+│ COMMIT                          │ Commit current transaction               │
+│ ROLLBACK                        │ Rollback current transaction             │
+├─────────────────────────────────┼──────────────────────────────────────────┤
+│ Data Commands:                  │                                          │
+│ GET <key>                       │ Get value by key                         │
+│ SET <key> <value> [TXN <id>]    │ Set key to value                         │
+│ SET <key> EXPR(<expr>)          │ Set key to expression result             │
+│ UPDATE <key> <val> [TXN <id>]   │ Update key with value                    │
+│ DEL <key> [TXN <id>]            │ Delete key-value pair                    │
+│ ALL                             │ Get all key-value pairs                  │
+├─────────────────────────────────┼──────────────────────────────────────────┤
+│ String Commands:                │                                          │
+│ STRLEN <key>                    │ Get length of value by key               │
+│ STRCAT <key> <value>            │ Concatenate value to key                 │
+│ SUBSTR <key> <start> <len>      │ Get substring of value by key            │
+├─────────────────────────────────┼──────────────────────────────────────────┤
+│ Expression Commands:            │                                          │
+│ EXPR(<expression>)              │ Calculate expression                     │
+│ EXPR(GET 1 + GET 2)             │ Calculate sum of values                  │
+│ SET 3 EXPR(GET 1 * 2)           │ Set using expression                     │
+├─────────────────────────────────┼──────────────────────────────────────────┤
+│ Maintenance Commands:           │                                          │
+│ VACUUM                          │ Run garbage collection on old versions   │
+│ PING                            │ Test server connectivity                 │
+├─────────────────────────────────┼──────────────────────────────────────────┤
+│ Client Commands:                │                                          │
+│ help                            │ Show this help message                   │
+│ exit                            │ Exit the client                          │
+└─────────────────────────────────┴──────────────────────────────────────────┘"#
         .to_string()
 }
 
@@ -207,6 +223,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "STRCAT".to_string(),
             "SUBSTR".to_string(),
             "EXPR".to_string(),
+            "BEGIN".to_string(),
+            "COMMIT".to_string(),
+            "ROLLBACK".to_string(),
+            "VACUUM".to_string(),
+            "PING".to_string(),
             "exit".to_string(),
             "help".to_string(),
         ],

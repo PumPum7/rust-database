@@ -5,6 +5,8 @@ pub mod buffer_pool_tests;
 #[cfg(test)]
 pub mod database_tests;
 #[cfg(test)]
+pub mod mvcc_tests;
+#[cfg(test)]
 pub mod protocol_tests;
 #[cfg(test)]
 pub mod server_tests;

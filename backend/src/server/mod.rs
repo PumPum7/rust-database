@@ -142,9 +142,15 @@ fn handle_command(
             client_txns.lock().unwrap().remove(&peer_addr);
             Ok(Response::Ok)
         }
-        Command::Get { key } => {
+        Command::Get { key, txn_id } => {
             let mut db = lock_db(&db)?;
-            let value = db.get(key)?;
+            let value = if let Some(t_id) = txn_id {
+                db.get_in_transaction(TransactionId(t_id), key)?
+            } else if let Some(&active_txn_id) = client_txns.lock().unwrap().get(&peer_addr) {
+                db.get_in_transaction(active_txn_id, key)?
+            } else {
+                db.get(key)?
+            };
             Ok(Response::Value(value))
         }
         Command::Set { key, value, txn_id } => {
@@ -174,14 +180,27 @@ fn handle_command(
             }
             Ok(Response::Ok)
         }
-        Command::All => {
+        Command::All { txn_id } => {
             let mut db = lock_db(&db)?;
-            let results = db.all()?;
+            let results = if let Some(t_id) = txn_id {
+                db.all_in_transaction(TransactionId(t_id))?
+            } else if let Some(&active_txn_id) = client_txns.lock().unwrap().get(&peer_addr) {
+                db.all_in_transaction(active_txn_id)?
+            } else {
+                db.all()?
+            };
             Ok(Response::Range(results))
         }
-        Command::Strlen { key } => {
+        Command::Strlen { key, txn_id } => {
             let mut db = lock_db(&db)?;
-            let size = db.strlen(key)?.unwrap_or(0);
+            let size = if let Some(t_id) = txn_id {
+                db.strlen_in_transaction(TransactionId(t_id), key)?
+                    .unwrap_or(0)
+            } else if let Some(&active_txn_id) = client_txns.lock().unwrap().get(&peer_addr) {
+                db.strlen_in_transaction(active_txn_id, key)?.unwrap_or(0)
+            } else {
+                db.strlen(key)?.unwrap_or(0)
+            };
             Ok(Response::Size(size))
         }
         Command::Strcat { key, value, txn_id } => {
@@ -213,6 +232,11 @@ fn handle_command(
                 Ok(value) => Ok(Response::Value(Some(value))),
                 Err(e) => Ok(Response::Error(e.to_string())),
             }
+        }
+        Command::Vacuum => {
+            let mut db = lock_db(&db)?;
+            let versions_removed = db.gc()?;
+            Ok(Response::Size(versions_removed))
         }
         Command::Ping => Ok(Response::Pong),
         Command::Exit => std::process::exit(0),

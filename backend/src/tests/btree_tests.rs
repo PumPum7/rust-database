@@ -4,7 +4,23 @@ mod tests {
     use crate::storage::buffer_pool::BufferPool;
     use crate::storage::disk_manager::DiskManager;
     use crate::storage::error::Result;
+    use crate::storage::mvcc::VersionedValue;
     use crate::storage::value::Value;
+    use crate::storage::TransactionId;
+
+    fn assert_version_matches(
+        versions: &Option<Vec<VersionedValue>>,
+        expected_value: &Value,
+        expected_xmin: u64,
+        expected_xmax: u64,
+    ) {
+        assert!(versions.is_some(), "Expected Some, got None");
+        let versions = versions.as_ref().unwrap();
+        assert_eq!(versions.len(), 1, "Expected 1 version");
+        assert_eq!(&versions[0].value, expected_value, "Value mismatch");
+        assert_eq!(versions[0].xmin, expected_xmin, "xmin mismatch");
+        assert_eq!(versions[0].xmax, expected_xmax, "xmax mismatch");
+    }
 
     #[test]
     fn test_btree_operations() -> Result<()> {
@@ -13,26 +29,47 @@ mod tests {
         let root_page_id = buffer_pool.new_page()?.header.page_id;
         let mut btree = BTree::new(root_page_id);
 
-        // Initialize root node
         btree.init(&mut buffer_pool)?;
 
-        // Insert test data
-        btree.insert(5, Value::Integer(50), &mut buffer_pool)?;
-        btree.insert(3, Value::Boolean(false), &mut buffer_pool)?;
-        btree.insert(7, Value::String("Test".to_string()), &mut buffer_pool)?;
+        let txn_id = TransactionId(1);
+        btree.insert(
+            5,
+            vec![VersionedValue::new(Value::Integer(50), txn_id)],
+            &mut buffer_pool,
+        )?;
+        btree.insert(
+            3,
+            vec![VersionedValue::new(Value::Boolean(false), txn_id)],
+            &mut buffer_pool,
+        )?;
+        btree.insert(
+            7,
+            vec![VersionedValue::new(
+                Value::String("Test".to_string()),
+                txn_id,
+            )],
+            &mut buffer_pool,
+        )?;
 
-        // Verify insertions
-        assert_eq!(btree.search(5, &mut buffer_pool)?, Some(Value::Integer(50)));
-        assert_eq!(
-            btree.search(3, &mut buffer_pool)?,
-            Some(Value::Boolean(false))
+        assert_version_matches(
+            &btree.search(5, &mut buffer_pool)?,
+            &Value::Integer(50),
+            1,
+            0,
         );
-        assert_eq!(
-            btree.search(7, &mut buffer_pool)?,
-            Some(Value::String("Test".to_string()))
+        assert_version_matches(
+            &btree.search(3, &mut buffer_pool)?,
+            &Value::Boolean(false),
+            1,
+            0,
+        );
+        assert_version_matches(
+            &btree.search(7, &mut buffer_pool)?,
+            &Value::String("Test".to_string()),
+            1,
+            0,
         );
 
-        // Delete the file again
         std::fs::remove_file("test_btree.db")?;
 
         Ok(())
@@ -47,26 +84,39 @@ mod tests {
 
         btree.init(&mut buffer_pool)?;
 
-        // Insert test data
-        btree.insert(10, Value::Integer(100), &mut buffer_pool)?;
-        btree.insert(20, Value::Integer(200), &mut buffer_pool)?;
-        btree.insert(30, Value::Integer(300), &mut buffer_pool)?;
+        let txn_id = TransactionId(1);
+        btree.insert(
+            10,
+            vec![VersionedValue::new(Value::Integer(100), txn_id)],
+            &mut buffer_pool,
+        )?;
+        btree.insert(
+            20,
+            vec![VersionedValue::new(Value::Integer(200), txn_id)],
+            &mut buffer_pool,
+        )?;
+        btree.insert(
+            30,
+            vec![VersionedValue::new(Value::Integer(300), txn_id)],
+            &mut buffer_pool,
+        )?;
 
-        // Delete a key
         btree.delete(20, &mut buffer_pool)?;
 
-        // Verify deletion
-        assert_eq!(btree.search(20, &mut buffer_pool)?, None);
-        assert_eq!(
-            btree.search(10, &mut buffer_pool)?,
-            Some(Value::Integer(100))
+        assert!(btree.search(20, &mut buffer_pool)?.is_none());
+        assert_version_matches(
+            &btree.search(10, &mut buffer_pool)?,
+            &Value::Integer(100),
+            1,
+            0,
         );
-        assert_eq!(
-            btree.search(30, &mut buffer_pool)?,
-            Some(Value::Integer(300))
+        assert_version_matches(
+            &btree.search(30, &mut buffer_pool)?,
+            &Value::Integer(300),
+            1,
+            0,
         );
 
-        // Delete the file again
         std::fs::remove_file("test_btree_delete.db")?;
 
         Ok(())
@@ -81,21 +131,34 @@ mod tests {
 
         btree.init(&mut buffer_pool)?;
 
-        // Insert initial data
-        btree.insert(5, Value::String("five".to_string()), &mut buffer_pool)?;
+        let txn_id = TransactionId(1);
+        btree.insert(
+            5,
+            vec![VersionedValue::new(
+                Value::String("five".to_string()),
+                txn_id,
+            )],
+            &mut buffer_pool,
+        )?;
 
         btree.delete(5, &mut buffer_pool)?;
 
-        // Update the value
-        btree.insert(5, Value::String("FIVE".to_string()), &mut buffer_pool)?;
+        btree.insert(
+            5,
+            vec![VersionedValue::new(
+                Value::String("FIVE".to_string()),
+                txn_id,
+            )],
+            &mut buffer_pool,
+        )?;
 
-        // Verify update
-        assert_eq!(
-            btree.search(5, &mut buffer_pool)?,
-            Some(Value::String("FIVE".to_string()))
+        assert_version_matches(
+            &btree.search(5, &mut buffer_pool)?,
+            &Value::String("FIVE".to_string()),
+            1,
+            0,
         );
 
-        // Delete the file again
         std::fs::remove_file("test_btree_update.db")?;
 
         Ok(())
@@ -110,17 +173,32 @@ mod tests {
 
         btree.init(&mut buffer_pool)?;
 
+        let txn_id = TransactionId(1);
         for i in 0..1000 {
-            btree.insert(i, Value::Integer(i as i64), &mut buffer_pool)?;
+            btree.insert(
+                i,
+                vec![VersionedValue::new(Value::Integer(i as i64), txn_id)],
+                &mut buffer_pool,
+            )?;
         }
 
         for i in 0..1000 {
+            let result = btree.search(i, &mut buffer_pool)?;
+            assert!(result.is_some(), "Key {} should exist", i);
+            let versions = result.unwrap();
+            assert_eq!(versions.len(), 1, "Key {} should have 1 version", i);
             assert_eq!(
-                btree.search(i, &mut buffer_pool)?,
-                Some(Value::Integer(i as i64)),
-                "Testing search with value {}",
+                versions[0].value,
+                Value::Integer(i as i64),
+                "Key {} should have correct value",
                 i
             );
+            assert_eq!(
+                versions[0].xmin, txn_id.0,
+                "Key {} should have correct xmin",
+                i
+            );
+            assert_eq!(versions[0].xmax, 0, "Key {} should not be deleted", i);
         }
 
         for i in 0..1000 {
@@ -131,6 +209,9 @@ mod tests {
             btree.search(0, &mut buffer_pool)?.is_none(),
             "Testing deletion"
         );
+
+        // Cleanup
+        std::fs::remove_file("test_big_btree.db")?;
 
         Ok(())
     }

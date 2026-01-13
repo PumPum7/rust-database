@@ -96,11 +96,13 @@ pub fn parse_raw_command(
             Ok(Command::Rollback { txn_id })
         }
         "GET" => {
-            if parts.len() != 2 {
-                return Err("Usage: GET <key>".into());
+            if parts.len() < 2 {
+                return Err("Usage: GET <key> [TXN <id>]".into());
             }
+            let txn_id = get_txn_id(&parts);
             Ok(Command::Get {
                 key: parts[1].parse()?,
+                txn_id,
             })
         }
         "SET" => {
@@ -184,15 +186,21 @@ pub fn parse_raw_command(
                 txn_id,
             })
         }
-        "ALL" => Ok(Command::All),
+        "ALL" => {
+            let txn_id = get_txn_id(&parts);
+            Ok(Command::All { txn_id })
+        }
         "STRLEN" => {
-            if parts.len() != 2 {
-                return Err("Usage: STRLEN <key>".into());
+            if parts.len() < 2 {
+                return Err("Usage: STRLEN <key> [TXN <id>]".into());
             }
+            let txn_id = get_txn_id(&parts);
             Ok(Command::Strlen {
                 key: parts[1].parse()?,
+                txn_id,
             })
         }
+        "VACUUM" => Ok(Command::Vacuum),
         "STRCAT" => {
             if parts.len() < 3 {
                 return Err("Usage: STRCAT <key> <value> [TXN <id>]".into());

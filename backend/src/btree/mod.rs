@@ -3,8 +3,9 @@ use std::sync::RwLock;
 
 use crate::storage::buffer_pool::BufferPool;
 use crate::storage::error::{DatabaseError, Result};
+use crate::storage::mvcc::VersionedValue;
 use crate::storage::page::Page;
-use crate::storage::value::Value;
+use crate::storage::TransactionId;
 
 const ORDER: usize = 4; // Maximum number of children per node
 const MAX_KEYS: usize = ORDER - 1;
@@ -13,14 +14,14 @@ const MIN_KEYS: usize = (ORDER / 2) - 1;
 #[derive(Debug)]
 pub struct KeyValue {
     key: i32,
-    value: Value,
+    versions: Vec<VersionedValue>,
 }
 
 impl Clone for KeyValue {
     fn clone(&self) -> Self {
         Self {
             key: self.key,
-            value: self.value.clone(),
+            versions: self.versions.clone(),
         }
     }
 }
@@ -43,7 +44,7 @@ impl BTreeNode {
         }
     }
 
-    pub fn search(&self, key: i32) -> Result<Option<Value>> {
+    pub fn search(&self, key: i32) -> Result<Option<Vec<VersionedValue>>> {
         let mut idx = 0;
 
         while idx < self.entries.len() && key > self.entries[idx].key {
@@ -51,7 +52,7 @@ impl BTreeNode {
         }
 
         if idx < self.entries.len() && key == self.entries[idx].key {
-            Ok(Some(self.entries[idx].value.clone()))
+            Ok(Some(self.entries[idx].versions.clone()))
         } else if self.is_leaf {
             Ok(None)
         } else if idx < self.children.len() {
@@ -61,7 +62,7 @@ impl BTreeNode {
         }
     }
 
-    pub fn insert_non_full(&mut self, key: i32, value: Value) -> Result<()> {
+    pub fn insert_non_full(&mut self, key: i32, versions: Vec<VersionedValue>) -> Result<()> {
         let mut idx = self.entries.len();
 
         if self.is_leaf {
@@ -69,7 +70,7 @@ impl BTreeNode {
                 idx -= 1;
             }
 
-            self.entries.insert(idx, KeyValue { key, value });
+            self.entries.insert(idx, KeyValue { key, versions });
         } else {
             while idx > 0 && key < self.entries[idx - 1].key {
                 idx -= 1;
@@ -94,7 +95,14 @@ impl BTreeNode {
         // Entries
         for entry in &self.entries {
             buffer.extend_from_slice(&entry.key.to_le_bytes());
-            buffer.extend(entry.value.serialize());
+
+            // Serialize versions count
+            buffer.extend_from_slice(&(entry.versions.len() as u16).to_le_bytes());
+
+            // Serialize versions
+            for version in &entry.versions {
+                buffer.extend(version.serialize());
+            }
         }
 
         // Children section: each child is 4 bytes
@@ -122,28 +130,43 @@ impl BTreeNode {
         })?) as usize;
 
         let entries_start = 7;
-        let entries_end = entries_start + (entry_count * 8);
-
-        if buffer.len() < entries_end {
-            return Err(
-                DatabaseError::InvalidData("Buffer too short for entries".to_string()).into(),
-            );
-        }
 
         let mut current_pos = entries_start;
         let mut entries = Vec::new();
         for _ in 0..entry_count {
+            if current_pos + 4 > buffer.len() {
+                return Err(
+                    DatabaseError::InvalidData("Buffer too short for key".to_string()).into(),
+                );
+            }
             let key =
                 i32::from_le_bytes(buffer[current_pos..current_pos + 4].try_into().map_err(
                     |e| DatabaseError::InvalidData(format!("Invalid key bytes: {}", e)),
                 )?);
             current_pos += 4;
 
-            let (value, value_size) = Value::deserialize(&buffer[current_pos..])
-                .map_err(|e| DatabaseError::InvalidData(e.to_string()))?;
-            current_pos += value_size;
+            if current_pos + 2 > buffer.len() {
+                return Err(DatabaseError::InvalidData(
+                    "Buffer too short for version count".to_string(),
+                )
+                .into());
+            }
+            let version_count =
+                u16::from_le_bytes(buffer[current_pos..current_pos + 2].try_into().map_err(
+                    |e| DatabaseError::InvalidData(format!("Invalid version count bytes: {}", e)),
+                )?) as usize;
+            current_pos += 2;
 
-            entries.push(KeyValue { key, value });
+            let mut versions = Vec::new();
+            for _ in 0..version_count {
+                let (version, version_size) =
+                    VersionedValue::deserialize(&buffer[current_pos..])
+                        .map_err(|e| DatabaseError::InvalidData(e.to_string()))?;
+                versions.push(version);
+                current_pos += version_size;
+            }
+
+            entries.push(KeyValue { key, versions });
         }
 
         let children: Vec<u32> = buffer[current_pos..]
@@ -188,7 +211,11 @@ impl BTree {
         *self.root_page_id.read().unwrap()
     }
 
-    pub fn search(&self, key: i32, buffer_pool: &mut BufferPool) -> Result<Option<Value>> {
+    pub fn search(
+        &self,
+        key: i32,
+        buffer_pool: &mut BufferPool,
+    ) -> Result<Option<Vec<VersionedValue>>> {
         let mut current_page_id = *self.root_page_id.read().unwrap();
 
         loop {
@@ -199,7 +226,7 @@ impl BTree {
             let idx = node.entries.binary_search_by_key(&key, |entry| entry.key);
 
             match idx {
-                Ok(i) => return Ok(Some(node.entries[i].value.clone())),
+                Ok(i) => return Ok(Some(node.entries[i].versions.clone())),
                 Err(i) if !node.is_leaf => {
                     // Key not found in current node, traverse to appropriate child
                     if i < node.children.len() {
@@ -213,7 +240,12 @@ impl BTree {
         }
     }
 
-    pub fn insert(&mut self, key: i32, value: Value, buffer_pool: &mut BufferPool) -> Result<()> {
+    pub fn insert(
+        &mut self,
+        key: i32,
+        versions: Vec<VersionedValue>,
+        buffer_pool: &mut BufferPool,
+    ) -> Result<()> {
         let root_page_id = *self.root_page_id.read().unwrap();
         // Get root node
         let root_page = buffer_pool.get_page(root_page_id)?;
@@ -239,9 +271,9 @@ impl BTree {
             // Insert into new root
 
             drop(root_page_id_write);
-            self.insert_non_full(new_root.page_id, key, value, buffer_pool)?;
+            self.insert_non_full(new_root.page_id, key, versions, buffer_pool)?;
         } else {
-            self.insert_non_full(root_page_id, key, value, buffer_pool)?;
+            self.insert_non_full(root_page_id, key, versions, buffer_pool)?;
         }
         Ok(())
     }
@@ -250,7 +282,7 @@ impl BTree {
         &mut self,
         page_id: u32,
         key: i32,
-        value: Value,
+        versions: Vec<VersionedValue>,
         buffer_pool: &mut BufferPool,
     ) -> Result<()> {
         let page = buffer_pool.get_page(page_id)?;
@@ -264,13 +296,7 @@ impl BTree {
                 .position(|entry| entry.key > key)
                 .unwrap_or(node.entries.len());
 
-            node.entries.insert(
-                pos,
-                KeyValue {
-                    key,
-                    value: value.clone(),
-                },
-            );
+            node.entries.insert(pos, KeyValue { key, versions });
 
             // Write updated node
             let mut page = Page::new(node.page_id);
@@ -305,10 +331,10 @@ impl BTree {
                 };
 
                 // Recursively insert into child
-                self.insert_non_full(node.children[new_child_idx], key, value, buffer_pool)?;
+                self.insert_non_full(node.children[new_child_idx], key, versions, buffer_pool)?;
             } else {
                 // Recursively insert into child
-                self.insert_non_full(child_page_id, key, value, buffer_pool)?;
+                self.insert_non_full(child_page_id, key, versions, buffer_pool)?;
             }
         }
         Ok(())
@@ -553,36 +579,68 @@ impl BTree {
         BTreeNode::deserialize(&page.data)
     }
 
-    pub fn update(&mut self, key: i32, value: Value, buffer_pool: &mut BufferPool) -> Result<()> {
-        let _ = self.delete(key, buffer_pool);
-        self.insert(key, value, buffer_pool)
+    pub fn update(
+        &mut self,
+        key: i32,
+        versions: Vec<VersionedValue>,
+        buffer_pool: &mut BufferPool,
+    ) -> Result<()> {
+        let mut current_page_id = *self.root_page_id.read().unwrap();
+
+        loop {
+            let page = buffer_pool.get_page(current_page_id)?;
+            let mut node = BTreeNode::deserialize(&page.data)?;
+
+            // Check if key exists in current node
+            let idx = node.entries.binary_search_by_key(&key, |entry| entry.key);
+
+            if let Ok(entry_idx) = idx {
+                // Key found, update versions
+                node.entries[entry_idx].versions = versions;
+
+                // Write updated node
+                let mut page = Page::new(node.page_id);
+                page.data = node.serialize();
+                buffer_pool.write_page(node.page_id, page)?;
+                return Ok(());
+            } else if !node.is_leaf {
+                // Key not found, traverse to appropriate child
+                let child_idx = idx.unwrap_or_else(|e| e);
+                if child_idx < node.children.len() {
+                    current_page_id = node.children[child_idx];
+                    continue;
+                } else {
+                    // Key not found, insert it
+                    return self.insert(key, versions, buffer_pool);
+                }
+            } else {
+                // Leaf node and key not found, insert it
+                return self.insert(key, versions, buffer_pool);
+            }
+        }
     }
 
     pub fn traverse(
         &self,
         page_id: u32,
         buffer_pool: &mut BufferPool,
-        result: &mut Vec<(i32, Value)>,
+        result: &mut Vec<(i32, Vec<VersionedValue>)>,
     ) -> Result<()> {
         let node = self.get_node(page_id, buffer_pool)?;
 
         if node.is_leaf {
-            // For leaf nodes, add all entries
-            result.extend(
-                node.entries
-                    .iter()
-                    .map(|entry| (entry.key, entry.value.clone())),
-            );
+            for entry in &node.entries {
+                if !entry.versions.is_empty() {
+                    result.push((entry.key, entry.versions.clone()));
+                }
+            }
         } else {
-            // For internal nodes, traverse in order
             for i in 0..=node.entries.len() {
                 if i < node.children.len() {
-                    // Traverse child
                     self.traverse(node.children[i], buffer_pool, result)?;
                 }
-                if i < node.entries.len() {
-                    // Add current entry
-                    result.push((node.entries[i].key, node.entries[i].value.clone()));
+                if i < node.entries.len() && !node.entries[i].versions.is_empty() {
+                    result.push((node.entries[i].key, node.entries[i].versions.clone()));
                 }
             }
         }
@@ -590,10 +648,70 @@ impl BTree {
         Ok(())
     }
 
-    pub fn all(&self, buffer_pool: &mut BufferPool) -> Result<Vec<(i32, Value)>> {
+    pub fn all(&self, buffer_pool: &mut BufferPool) -> Result<Vec<(i32, Vec<VersionedValue>)>> {
         let mut result = Vec::new();
         let root_page_id = *self.root_page_id.read().unwrap();
         self.traverse(root_page_id, buffer_pool, &mut result)?;
         Ok(result)
+    }
+
+    pub fn gc(
+        &mut self,
+        oldest_active_txn: TransactionId,
+        buffer_pool: &mut BufferPool,
+    ) -> Result<usize> {
+        let root_page_id = *self.root_page_id.read().unwrap();
+        self.gc_node(root_page_id, oldest_active_txn, buffer_pool)
+    }
+
+    fn gc_node(
+        &mut self,
+        page_id: u32,
+        oldest_active_txn: TransactionId,
+        buffer_pool: &mut BufferPool,
+    ) -> Result<usize> {
+        let page = buffer_pool.get_page(page_id)?;
+        let mut node = BTreeNode::deserialize(&page.data)?;
+        let mut versions_removed = 0;
+
+        for entry in &mut node.entries {
+            let original_len = entry.versions.len();
+
+            // Keep only versions that are still visible to some transaction
+            // A version can be garbage collected if:
+            // 1. It was deleted (xmax != 0)
+            // 2. The deleting transaction is older than the oldest active transaction
+            // 3. There's a newer version available
+            entry.versions.retain(|version| {
+                if version.xmax == 0 {
+                    // Not deleted, keep it
+                    true
+                } else if TransactionId(version.xmax) >= oldest_active_txn {
+                    // Deleted by a transaction that might still be visible
+                    true
+                } else {
+                    // Deleted and the delete is visible to all active transactions
+                    false
+                }
+            });
+
+            versions_removed += original_len - entry.versions.len();
+        }
+
+        // Write back the node if we removed any versions
+        if versions_removed > 0 {
+            let mut page = Page::new(node.page_id);
+            page.data = node.serialize();
+            buffer_pool.write_page(node.page_id, page)?;
+        }
+
+        // Recursively GC children
+        if !node.is_leaf {
+            for child_id in &node.children {
+                versions_removed += self.gc_node(*child_id, oldest_active_txn, buffer_pool)?;
+            }
+        }
+
+        Ok(versions_removed)
     }
 }

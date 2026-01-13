@@ -14,6 +14,7 @@ pub enum Command {
     },
     Get {
         key: i32,
+        txn_id: Option<u64>,
     },
     Set {
         key: i32,
@@ -29,9 +30,12 @@ pub enum Command {
         value: Value,
         txn_id: Option<u64>,
     },
-    All,
+    All {
+        txn_id: Option<u64>,
+    },
     Strlen {
         key: i32,
+        txn_id: Option<u64>,
     },
     Strcat {
         key: i32,
@@ -44,6 +48,7 @@ pub enum Command {
         length: usize,
         txn_id: Option<u64>,
     },
+    Vacuum,
     Ping,
     Exit,
     Expression(String),
