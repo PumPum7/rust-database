@@ -11,19 +11,10 @@ const ORDER: usize = 4; // Maximum number of children per node
 const MAX_KEYS: usize = ORDER - 1;
 const MIN_KEYS: usize = (ORDER / 2) - 1;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct KeyValue {
     key: i32,
     versions: Vec<VersionedValue>,
-}
-
-impl Clone for KeyValue {
-    fn clone(&self) -> Self {
-        Self {
-            key: self.key,
-            versions: self.versions.clone(),
-        }
-    }
 }
 
 #[derive(Debug)]
