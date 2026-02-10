@@ -77,6 +77,8 @@ cargo run --package database-client
 | `RANGE LTE <key>` | Get all keys less than or equal to `<key>` |
 | `RANGE BETWEEN <start> <end>` | Get all keys between `<start>` and `<end>` (inclusive) |
 
+Range scans use B-tree pruning to avoid full-tree scans.
+
 Range queries support transaction context:
 - `RANGE GT <key> TXN <id>`
 - `RANGE BETWEEN <start> <end> TXN <id>`
