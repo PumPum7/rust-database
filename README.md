@@ -67,6 +67,20 @@ cargo run --package database-client
 | `STRCAT <key> <value>` | Append to string value |
 | `SUBSTR <key> <start> <len>` | Extract substring |
 
+### Range Queries
+
+| Command | Description |
+|---------|-------------|
+| `RANGE GT <key>` | Get all keys greater than `<key>` |
+| `RANGE LT <key>` | Get all keys less than `<key>` |
+| `RANGE GTE <key>` | Get all keys greater than or equal to `<key>` |
+| `RANGE LTE <key>` | Get all keys less than or equal to `<key>` |
+| `RANGE BETWEEN <start> <end>` | Get all keys between `<start>` and `<end>` (inclusive) |
+
+Range queries support transaction context:
+- `RANGE GT <key> TXN <id>`
+- `RANGE BETWEEN <start> <end> TXN <id>`
+
 ### Transaction Commands
 
 | Command | Description |
@@ -164,6 +178,31 @@ GET 1                           # Returns: 100
 GET 1                           # Still returns: 100 (snapshot)
 COMMIT
 GET 1                           # Now returns: 200
+```
+
+### Example: Range Queries
+
+```
+# Insert some data
+SET 10 100
+SET 20 200
+SET 30 300
+SET 40 400
+SET 50 500
+
+# Get all keys greater than 25
+RANGE GT 25
+# Returns: [(30, 300), (40, 400), (50, 500)]
+
+# Get all keys between 20 and 40 (inclusive)
+RANGE BETWEEN 20 40
+# Returns: [(20, 200), (30, 300), (40, 400)]
+
+# Range queries in transactions
+BEGIN rr
+RANGE GT 25 TXN 1
+# Returns snapshot-consistent results
+COMMIT
 ```
 
 ## Development

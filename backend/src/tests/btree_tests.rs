@@ -225,4 +225,98 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_btree_range_queries() -> Result<()> {
+        let disk_manager = DiskManager::new("test_btree_range.db")?;
+        let wal = Arc::new(Mutex::new(WriteAheadLog::new("test_btree_range.wal")?));
+        let mut buffer_pool = BufferPool::new(100, disk_manager, Arc::clone(&wal));
+        let root_page_id = buffer_pool.new_page()?.header.page_id;
+        let mut btree = BTree::new(root_page_id);
+
+        btree.init(&mut buffer_pool)?;
+
+        let txn_id = TransactionId(1);
+        // Insert some test data
+        btree.insert(
+            10,
+            vec![VersionedValue::new(Value::Integer(100), txn_id)],
+            &mut buffer_pool,
+        )?;
+        btree.insert(
+            20,
+            vec![VersionedValue::new(Value::Integer(200), txn_id)],
+            &mut buffer_pool,
+        )?;
+        btree.insert(
+            30,
+            vec![VersionedValue::new(Value::Integer(300), txn_id)],
+            &mut buffer_pool,
+        )?;
+        btree.insert(
+            40,
+            vec![VersionedValue::new(Value::Integer(400), txn_id)],
+            &mut buffer_pool,
+        )?;
+        btree.insert(
+            50,
+            vec![VersionedValue::new(Value::Integer(500), txn_id)],
+            &mut buffer_pool,
+        )?;
+
+        // Test GT (greater than)
+        let gt_results = btree.range_gt(25, &mut buffer_pool)?;
+        assert_eq!(gt_results.len(), 3);
+        assert_eq!(gt_results[0].0, 30);
+        assert_eq!(gt_results[1].0, 40);
+        assert_eq!(gt_results[2].0, 50);
+
+        // Test LT (less than)
+        let lt_results = btree.range_lt(35, &mut buffer_pool)?;
+        assert_eq!(lt_results.len(), 3);
+        assert_eq!(lt_results[0].0, 10);
+        assert_eq!(lt_results[1].0, 20);
+        assert_eq!(lt_results[2].0, 30);
+
+        // Test GTE (greater than or equal)
+        let gte_results = btree.range_gte(30, &mut buffer_pool)?;
+        assert_eq!(gte_results.len(), 3);
+        assert_eq!(gte_results[0].0, 30);
+        assert_eq!(gte_results[1].0, 40);
+        assert_eq!(gte_results[2].0, 50);
+
+        // Test LTE (less than or equal)
+        let lte_results = btree.range_lte(30, &mut buffer_pool)?;
+        assert_eq!(lte_results.len(), 3);
+        assert_eq!(lte_results[0].0, 10);
+        assert_eq!(lte_results[1].0, 20);
+        assert_eq!(lte_results[2].0, 30);
+
+        // Test BETWEEN
+        let between_results = btree.range_between(20, 40, &mut buffer_pool)?;
+        assert_eq!(between_results.len(), 3);
+        assert_eq!(between_results[0].0, 20);
+        assert_eq!(between_results[1].0, 30);
+        assert_eq!(between_results[2].0, 40);
+
+        // Test edge cases
+        let gt_all = btree.range_gt(50, &mut buffer_pool)?;
+        assert_eq!(gt_all.len(), 0);
+
+        let lt_all = btree.range_lt(10, &mut buffer_pool)?;
+        assert_eq!(lt_all.len(), 0);
+
+        let between_empty = btree.range_between(5, 8, &mut buffer_pool)?;
+        assert_eq!(between_empty.len(), 0);
+
+        // Test inverted range (start > end) - should return empty
+        let inverted_range = btree.range_between(50, 10, &mut buffer_pool)?;
+        assert_eq!(inverted_range.len(), 0);
+
+        // Cleanup
+        std::fs::remove_file("test_btree_range.db")?;
+        let _ = std::fs::remove_file("test_btree_range.wal");
+
+        Ok(())
+    }
 }

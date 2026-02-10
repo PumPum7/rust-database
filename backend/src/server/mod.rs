@@ -3,7 +3,7 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::{Arc, Mutex, MutexGuard};
 use threadpool::ThreadPool;
 
-use crate::command::Command;
+use crate::command::{Command, RangeType as CommandRangeType};
 use crate::database_handler::database_handler::{Database, IsolationLevel};
 use crate::protocol::connection::Connection;
 use crate::protocol::error::ProtocolError;
@@ -225,6 +225,73 @@ fn handle_command(
                 db.substr(key, start, length)?;
             }
             Ok(Response::Ok)
+        }
+        Command::Range {
+            range_type,
+            key1,
+            key2,
+            txn_id,
+        } => {
+            let mut db = lock_db(&db)?;
+            let results = match range_type {
+                CommandRangeType::Gt => {
+                    if let Some(t_id) = txn_id {
+                        db.range_gt_in_transaction(TransactionId(t_id), key1)?
+                    } else if let Some(&active_txn_id) = client_txns.lock().unwrap().get(&peer_addr)
+                    {
+                        db.range_gt_in_transaction(active_txn_id, key1)?
+                    } else {
+                        db.range_gt(key1)?
+                    }
+                }
+                CommandRangeType::Lt => {
+                    if let Some(t_id) = txn_id {
+                        db.range_lt_in_transaction(TransactionId(t_id), key1)?
+                    } else if let Some(&active_txn_id) = client_txns.lock().unwrap().get(&peer_addr)
+                    {
+                        db.range_lt_in_transaction(active_txn_id, key1)?
+                    } else {
+                        db.range_lt(key1)?
+                    }
+                }
+                CommandRangeType::Gte => {
+                    if let Some(t_id) = txn_id {
+                        db.range_gte_in_transaction(TransactionId(t_id), key1)?
+                    } else if let Some(&active_txn_id) = client_txns.lock().unwrap().get(&peer_addr)
+                    {
+                        db.range_gte_in_transaction(active_txn_id, key1)?
+                    } else {
+                        db.range_gte(key1)?
+                    }
+                }
+                CommandRangeType::Lte => {
+                    if let Some(t_id) = txn_id {
+                        db.range_lte_in_transaction(TransactionId(t_id), key1)?
+                    } else if let Some(&active_txn_id) = client_txns.lock().unwrap().get(&peer_addr)
+                    {
+                        db.range_lte_in_transaction(active_txn_id, key1)?
+                    } else {
+                        db.range_lte(key1)?
+                    }
+                }
+                CommandRangeType::Between => {
+                    if let Some(end_key) = key2 {
+                        if let Some(t_id) = txn_id {
+                            db.range_between_in_transaction(TransactionId(t_id), key1, end_key)?
+                        } else if let Some(&active_txn_id) =
+                            client_txns.lock().unwrap().get(&peer_addr)
+                        {
+                            db.range_between_in_transaction(active_txn_id, key1, end_key)?
+                        } else {
+                            db.range_between(key1, end_key)?
+                        }
+                    } else {
+                        // This should never happen due to parse-time validation, but keep as safety
+                        return Err("BETWEEN requires two keys".into());
+                    }
+                }
+            };
+            Ok(Response::Range(results))
         }
         Command::Expression(expr) => {
             let mut db = db.clone();

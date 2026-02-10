@@ -178,6 +178,52 @@ impl BTreeNode {
     }
 }
 
+struct RangeBounds {
+    lower: Option<i32>,
+    upper: Option<i32>,
+    lower_inclusive: bool,
+    upper_inclusive: bool,
+}
+
+impl RangeBounds {
+    fn contains(&self, key: i32) -> bool {
+        let above_lower = match self.lower {
+            Some(lo) => {
+                if self.lower_inclusive {
+                    key >= lo
+                } else {
+                    key > lo
+                }
+            }
+            None => true,
+        };
+        let below_upper = match self.upper {
+            Some(hi) => {
+                if self.upper_inclusive {
+                    key <= hi
+                } else {
+                    key < hi
+                }
+            }
+            None => true,
+        };
+        above_lower && below_upper
+    }
+
+    fn exceeds_upper(&self, key: i32) -> bool {
+        match self.upper {
+            Some(hi) => {
+                if self.upper_inclusive {
+                    key > hi
+                } else {
+                    key >= hi
+                }
+            }
+            None => false,
+        }
+    }
+}
+
 pub struct BTree {
     root_page_id: Arc<RwLock<u32>>,
 }
@@ -644,6 +690,173 @@ impl BTree {
         let root_page_id = *self.root_page_id.read().unwrap();
         self.traverse(root_page_id, buffer_pool, &mut result)?;
         Ok(result)
+    }
+
+    pub fn range_gt(
+        &self,
+        key: i32,
+        buffer_pool: &mut BufferPool,
+    ) -> Result<Vec<(i32, Vec<VersionedValue>)>> {
+        let mut result = Vec::new();
+        let root_page_id = *self.root_page_id.read().unwrap();
+        let bounds = RangeBounds {
+            lower: Some(key),
+            upper: None,
+            lower_inclusive: false,
+            upper_inclusive: true,
+        };
+        self.traverse_range(root_page_id, buffer_pool, &mut result, &bounds)?;
+        Ok(result)
+    }
+
+    pub fn range_lt(
+        &self,
+        key: i32,
+        buffer_pool: &mut BufferPool,
+    ) -> Result<Vec<(i32, Vec<VersionedValue>)>> {
+        let mut result = Vec::new();
+        let root_page_id = *self.root_page_id.read().unwrap();
+        let bounds = RangeBounds {
+            lower: None,
+            upper: Some(key),
+            lower_inclusive: true,
+            upper_inclusive: false,
+        };
+        self.traverse_range(root_page_id, buffer_pool, &mut result, &bounds)?;
+        Ok(result)
+    }
+
+    pub fn range_gte(
+        &self,
+        key: i32,
+        buffer_pool: &mut BufferPool,
+    ) -> Result<Vec<(i32, Vec<VersionedValue>)>> {
+        let mut result = Vec::new();
+        let root_page_id = *self.root_page_id.read().unwrap();
+        let bounds = RangeBounds {
+            lower: Some(key),
+            upper: None,
+            lower_inclusive: true,
+            upper_inclusive: true,
+        };
+        self.traverse_range(root_page_id, buffer_pool, &mut result, &bounds)?;
+        Ok(result)
+    }
+
+    pub fn range_lte(
+        &self,
+        key: i32,
+        buffer_pool: &mut BufferPool,
+    ) -> Result<Vec<(i32, Vec<VersionedValue>)>> {
+        let mut result = Vec::new();
+        let root_page_id = *self.root_page_id.read().unwrap();
+        let bounds = RangeBounds {
+            lower: None,
+            upper: Some(key),
+            lower_inclusive: true,
+            upper_inclusive: true,
+        };
+        self.traverse_range(root_page_id, buffer_pool, &mut result, &bounds)?;
+        Ok(result)
+    }
+
+    pub fn range_between(
+        &self,
+        start: i32,
+        end: i32,
+        buffer_pool: &mut BufferPool,
+    ) -> Result<Vec<(i32, Vec<VersionedValue>)>> {
+        if start > end {
+            return Ok(Vec::new());
+        }
+
+        let mut result = Vec::new();
+        let root_page_id = *self.root_page_id.read().unwrap();
+        let bounds = RangeBounds {
+            lower: Some(start),
+            upper: Some(end),
+            lower_inclusive: true,
+            upper_inclusive: true,
+        };
+        self.traverse_range(root_page_id, buffer_pool, &mut result, &bounds)?;
+        Ok(result)
+    }
+
+    fn might_contain_keys_in_range(
+        child_idx: usize,
+        node: &BTreeNode,
+        bounds: &RangeBounds,
+    ) -> bool {
+        let child_min = if child_idx > 0 {
+            Some(node.entries[child_idx - 1].key)
+        } else {
+            None
+        };
+        let child_max = if child_idx < node.entries.len() {
+            Some(node.entries[child_idx].key)
+        } else {
+            None
+        };
+
+        if let (Some(hi), Some(cmin)) = (bounds.upper, child_min) {
+            if bounds.upper_inclusive {
+                if hi < cmin {
+                    return false;
+                }
+            } else if hi <= cmin {
+                return false;
+            }
+        }
+
+        if let (Some(lo), Some(cmax)) = (bounds.lower, child_max) {
+            if bounds.lower_inclusive {
+                if lo > cmax {
+                    return false;
+                }
+            } else if lo >= cmax {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn traverse_range(
+        &self,
+        page_id: u32,
+        buffer_pool: &mut BufferPool,
+        result: &mut Vec<(i32, Vec<VersionedValue>)>,
+        bounds: &RangeBounds,
+    ) -> Result<()> {
+        let node = self.get_node(page_id, buffer_pool)?;
+
+        if node.is_leaf {
+            for entry in &node.entries {
+                if bounds.exceeds_upper(entry.key) {
+                    break;
+                }
+                if !entry.versions.is_empty() && bounds.contains(entry.key) {
+                    result.push((entry.key, entry.versions.clone()));
+                }
+            }
+        } else {
+            for i in 0..=node.entries.len() {
+                if i < node.children.len() && Self::might_contain_keys_in_range(i, &node, bounds) {
+                    self.traverse_range(node.children[i], buffer_pool, result, bounds)?;
+                }
+                if i < node.entries.len()
+                    && !node.entries[i].versions.is_empty()
+                    && bounds.contains(node.entries[i].key)
+                {
+                    result.push((node.entries[i].key, node.entries[i].versions.clone()));
+                }
+                if i < node.entries.len() && bounds.exceeds_upper(node.entries[i].key) {
+                    break;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn gc(

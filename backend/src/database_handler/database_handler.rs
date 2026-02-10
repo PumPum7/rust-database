@@ -370,6 +370,115 @@ impl Database {
         Ok(())
     }
 
+    pub fn range_gt(&mut self, key: i32) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::range_gt(&self.index, &mut self.buffer_pool, key, None, &aborted)
+    }
+
+    pub fn range_gt_in_transaction(
+        &mut self,
+        txn_id: TransactionId,
+        key: i32,
+    ) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+        let txn = self
+            .get_active_transaction(txn_id)
+            .ok_or(DatabaseError::TransactionNotActive)?;
+        let snapshot = txn.get_snapshot();
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::range_gt(&self.index, &mut self.buffer_pool, key, snapshot, &aborted)
+    }
+
+    pub fn range_lt(&mut self, key: i32) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::range_lt(&self.index, &mut self.buffer_pool, key, None, &aborted)
+    }
+
+    pub fn range_lt_in_transaction(
+        &mut self,
+        txn_id: TransactionId,
+        key: i32,
+    ) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+        let txn = self
+            .get_active_transaction(txn_id)
+            .ok_or(DatabaseError::TransactionNotActive)?;
+        let snapshot = txn.get_snapshot();
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::range_lt(&self.index, &mut self.buffer_pool, key, snapshot, &aborted)
+    }
+
+    pub fn range_gte(&mut self, key: i32) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::range_gte(&self.index, &mut self.buffer_pool, key, None, &aborted)
+    }
+
+    pub fn range_gte_in_transaction(
+        &mut self,
+        txn_id: TransactionId,
+        key: i32,
+    ) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+        let txn = self
+            .get_active_transaction(txn_id)
+            .ok_or(DatabaseError::TransactionNotActive)?;
+        let snapshot = txn.get_snapshot();
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::range_gte(&self.index, &mut self.buffer_pool, key, snapshot, &aborted)
+    }
+
+    pub fn range_lte(&mut self, key: i32) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::range_lte(&self.index, &mut self.buffer_pool, key, None, &aborted)
+    }
+
+    pub fn range_lte_in_transaction(
+        &mut self,
+        txn_id: TransactionId,
+        key: i32,
+    ) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+        let txn = self
+            .get_active_transaction(txn_id)
+            .ok_or(DatabaseError::TransactionNotActive)?;
+        let snapshot = txn.get_snapshot();
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::range_lte(&self.index, &mut self.buffer_pool, key, snapshot, &aborted)
+    }
+
+    pub fn range_between(
+        &mut self,
+        start: i32,
+        end: i32,
+    ) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::range_between(
+            &self.index,
+            &mut self.buffer_pool,
+            start,
+            end,
+            None,
+            &aborted,
+        )
+    }
+
+    pub fn range_between_in_transaction(
+        &mut self,
+        txn_id: TransactionId,
+        start: i32,
+        end: i32,
+    ) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+        let txn = self
+            .get_active_transaction(txn_id)
+            .ok_or(DatabaseError::TransactionNotActive)?;
+        let snapshot = txn.get_snapshot();
+        let aborted = self.transaction_manager.get_aborted_transactions();
+        operations::range_between(
+            &self.index,
+            &mut self.buffer_pool,
+            start,
+            end,
+            snapshot,
+            &aborted,
+        )
+    }
+
     pub fn flush(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.buffer_pool
             .flush()

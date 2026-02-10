@@ -130,8 +130,7 @@ pub fn get(
     match btree.search(key, buffer_pool) {
         Ok(Some(versions)) => {
             if let Some(snapshot) = snapshot {
-                let active_txns: Vec<TransactionId> =
-                    snapshot.active_txns.iter().copied().collect();
+                let active_txns: Vec<TransactionId> = snapshot.active_txns.to_vec();
                 for version in versions.iter().rev() {
                     if aborted_txns.contains(&TransactionId(version.xmin)) {
                         continue;
@@ -230,6 +229,28 @@ pub fn update(
     }
 }
 
+fn get_visible_version_for_key(
+    versions: Vec<VersionedValue>,
+    snapshot: Option<&Snapshot>,
+    aborted_txns: &[TransactionId],
+) -> Option<Value> {
+    for version in versions.iter().rev() {
+        if aborted_txns.contains(&TransactionId(version.xmin)) {
+            continue;
+        }
+
+        if let Some(snapshot) = snapshot {
+            let active_txns: Vec<TransactionId> = snapshot.active_txns.iter().copied().collect();
+            if version.is_visible_to(snapshot.txn_id, &active_txns) {
+                return Some(version.value.clone());
+            }
+        } else if !version.is_deleted() || aborted_txns.contains(&TransactionId(version.xmax)) {
+            return Some(version.value.clone());
+        }
+    }
+    None
+}
+
 pub fn all(
     btree: &Arc<Mutex<BTree>>,
     buffer_pool: &mut BufferPool,
@@ -241,27 +262,8 @@ pub fn all(
 
     let mut result = Vec::new();
     for (key, versions) in all_entries {
-        if let Some(snapshot) = snapshot {
-            let active_txns: Vec<TransactionId> = snapshot.active_txns.iter().copied().collect();
-            for version in versions.iter().rev() {
-                if aborted_txns.contains(&TransactionId(version.xmin)) {
-                    continue;
-                }
-                if version.is_visible_to(snapshot.txn_id, &active_txns) {
-                    result.push((key, version.value.clone()));
-                    break;
-                }
-            }
-        } else {
-            for version in versions.iter().rev() {
-                if aborted_txns.contains(&TransactionId(version.xmin)) {
-                    continue;
-                }
-                if !version.is_deleted() || aborted_txns.contains(&TransactionId(version.xmax)) {
-                    result.push((key, version.value.clone()));
-                    break;
-                }
-            }
+        if let Some(value) = get_visible_version_for_key(versions, snapshot, aborted_txns) {
+            result.push((key, value));
         }
     }
 
@@ -325,4 +327,81 @@ pub fn substr(
         }
         None => Err(DatabaseError::KeyNotFound(key).into()),
     }
+}
+
+pub fn range_gt(
+    btree: &Arc<Mutex<BTree>>,
+    buffer_pool: &mut BufferPool,
+    key: i32,
+    snapshot: Option<&Snapshot>,
+    aborted_txns: &[TransactionId],
+) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+    let btree = btree.lock().unwrap();
+    let entries = btree.range_gt(key, buffer_pool)?;
+    filter_visible_versions(entries, snapshot, aborted_txns)
+}
+
+pub fn range_lt(
+    btree: &Arc<Mutex<BTree>>,
+    buffer_pool: &mut BufferPool,
+    key: i32,
+    snapshot: Option<&Snapshot>,
+    aborted_txns: &[TransactionId],
+) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+    let btree = btree.lock().unwrap();
+    let entries = btree.range_lt(key, buffer_pool)?;
+    filter_visible_versions(entries, snapshot, aborted_txns)
+}
+
+pub fn range_gte(
+    btree: &Arc<Mutex<BTree>>,
+    buffer_pool: &mut BufferPool,
+    key: i32,
+    snapshot: Option<&Snapshot>,
+    aborted_txns: &[TransactionId],
+) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+    let btree = btree.lock().unwrap();
+    let entries = btree.range_gte(key, buffer_pool)?;
+    filter_visible_versions(entries, snapshot, aborted_txns)
+}
+
+pub fn range_lte(
+    btree: &Arc<Mutex<BTree>>,
+    buffer_pool: &mut BufferPool,
+    key: i32,
+    snapshot: Option<&Snapshot>,
+    aborted_txns: &[TransactionId],
+) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+    let btree = btree.lock().unwrap();
+    let entries = btree.range_lte(key, buffer_pool)?;
+    filter_visible_versions(entries, snapshot, aborted_txns)
+}
+
+pub fn range_between(
+    btree: &Arc<Mutex<BTree>>,
+    buffer_pool: &mut BufferPool,
+    start: i32,
+    end: i32,
+    snapshot: Option<&Snapshot>,
+    aborted_txns: &[TransactionId],
+) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+    let btree = btree.lock().unwrap();
+    let entries = btree.range_between(start, end, buffer_pool)?;
+    filter_visible_versions(entries, snapshot, aborted_txns)
+}
+
+fn filter_visible_versions(
+    entries: Vec<(i32, Vec<VersionedValue>)>,
+    snapshot: Option<&Snapshot>,
+    aborted_txns: &[TransactionId],
+) -> Result<Vec<(i32, Value)>, Box<dyn std::error::Error>> {
+    let mut result = Vec::new();
+
+    for (key, versions) in entries {
+        if let Some(value) = get_visible_version_for_key(versions, snapshot, aborted_txns) {
+            result.push((key, value));
+        }
+    }
+
+    Ok(result)
 }

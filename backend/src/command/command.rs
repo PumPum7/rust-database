@@ -1,6 +1,15 @@
 use crate::storage::value::Value;
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum RangeType {
+    Gt,
+    Lt,
+    Gte,
+    Lte,
+    Between,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Command {
     Begin {
@@ -46,6 +55,12 @@ pub enum Command {
         key: i32,
         start: usize,
         length: usize,
+        txn_id: Option<u64>,
+    },
+    Range {
+        range_type: RangeType,
+        key1: i32,
+        key2: Option<i32>,
         txn_id: Option<u64>,
     },
     Vacuum,

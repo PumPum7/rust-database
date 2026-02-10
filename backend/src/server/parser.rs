@@ -1,5 +1,7 @@
 use crate::{
-    command::Command, database_handler::database_handler::Database, storage::value::Value,
+    command::{Command, RangeType},
+    database_handler::database_handler::Database,
+    storage::value::Value,
 };
 use std::sync::{Arc, Mutex};
 
@@ -233,6 +235,52 @@ pub fn parse_raw_command(
                 key: parts[1].parse()?,
                 start: parts[2].parse()?,
                 length: parts[3].parse()?,
+                txn_id,
+            })
+        }
+        "RANGE" => {
+            if parts.len() < 3 {
+                return Err("Usage: RANGE <type> <key1> [key2] [TXN <id>]".into());
+            }
+
+            let range_type = parts[1].to_uppercase();
+            let txn_id = get_txn_id(&parts);
+
+            // Extract key1 and optional key2
+            let key1 = parts[2].parse()?;
+            let key2 = if parts.len() >= 4 && !parts[3].to_uppercase().starts_with("TXN") {
+                Some(parts[3].parse()?)
+            } else {
+                None
+            };
+
+            // Parse range type into enum with validation
+            let range_type = match range_type.as_str() {
+                "GT" => RangeType::Gt,
+                "LT" => RangeType::Lt,
+                "GTE" => RangeType::Gte,
+                "LTE" => RangeType::Lte,
+                "BETWEEN" => RangeType::Between,
+                _ => {
+                    return Err(format!(
+                        "Invalid range type: {}. Use GT, LT, GTE, LTE, or BETWEEN",
+                        range_type
+                    )
+                    .into())
+                }
+            };
+
+            // Validate BETWEEN requires two keys at parse time
+            if matches!(range_type, RangeType::Between) && key2.is_none() {
+                return Err(
+                    "BETWEEN requires two keys: RANGE BETWEEN <start> <end> [TXN <id>]".into(),
+                );
+            }
+
+            Ok(Command::Range {
+                range_type,
+                key1,
+                key2,
                 txn_id,
             })
         }
